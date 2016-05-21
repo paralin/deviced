@@ -42,7 +42,7 @@ type ContainerSyncWorker struct {
 // Init the worker
 func (cw *ContainerSyncWorker) Init() error {
 	cw.Running = true
-	cw.EventsChannel = make(chan *dc.APIEvents, 10)
+	cw.EventsChannel = make(chan *dc.APIEvents, 50)
 	cw.WakeChannel = make(chan bool, 1)
 	cw.QuitChannel = make(chan bool, 1)
 	cw.StateChangedChannel = make(chan bool, 1)
@@ -88,6 +88,18 @@ func parseImageAndTag(imagestr string) (string, string) {
 
 func (cw *ContainerSyncWorker) Run() {
 	for cw.Running {
+		hasEvents := true
+		for hasEvents {
+			select {
+			case _ = <-cw.WakeChannel:
+				continue
+			case _ = <-cw.StateChangedChannel:
+				continue
+			default:
+				hasEvents = false
+				break
+			}
+		}
 		// Load the current container list
 		listOpts := dc.ListContainersOptions{
 			All:  true,
@@ -102,7 +114,7 @@ func (cw *ContainerSyncWorker) Run() {
 		containers, err := cw.DockerClient.ListContainers(listOpts)
 		if err != nil {
 			fmt.Errorf("Unable to list containers, error: %v\n", err)
-			if sleepShouldQuit(cw, time.Duration(2)) {
+			if sleepShouldQuit(cw, time.Duration(2*time.Second)) {
 				return
 			}
 		}
@@ -112,7 +124,7 @@ func (cw *ContainerSyncWorker) Run() {
 		images, err := cw.DockerClient.ListImages(liOpts)
 		if err != nil {
 			fmt.Printf("Error fetching images list %v\n", err)
-			if sleepShouldQuit(cw, time.Duration(2)) {
+			if sleepShouldQuit(cw, time.Duration(2*time.Second)) {
 				return
 			}
 			continue
@@ -271,18 +283,53 @@ func (cw *ContainerSyncWorker) Run() {
 
 		cw.StateChangedChannel <- true
 
-		for {
+		// Flush the events
+		hasEvents = true
+		for hasEvents {
+			select {
+			case _ = <-cw.EventsChannel:
+				continue
+			default:
+				hasEvents = false
+				break
+			}
+		}
+
+		eventsToListen := map[string]bool{
+			"pull":   true,
+			"tag":    true,
+			"import": true,
+		}
+
+		doRecheck := false
+		for !doRecheck {
 			select {
 			case <-cw.QuitChannel:
 				fmt.Printf("ContainerSyncWorker exiting...\n")
 				return
 			case <-cw.WakeChannel:
 				fmt.Printf("ContainerSyncWorker woken, re-checking...\n")
+				doRecheck = true
 				break
+				// We want to re-check with the following events:
+				// - pull
+				// - tag
+				// - import
 			case event := <-cw.EventsChannel:
-				_ = event
 				// use continue to ignore event
 				// fmt.Printf("ContainerSyncWorker processing event, %s\n", event)
+				if event.Type == "image" && eventsToListen[event.Action] {
+					// Check the actor
+					cw.ConfigLock.Lock()
+					// If the image is in our list of targets...
+					for _, tgt := range cw.Config.Containers {
+						if event.Actor.Attributes["name"] == tgt.Image {
+							doRecheck = true
+							break
+						}
+					}
+					cw.ConfigLock.Unlock()
+				}
 				break
 			}
 		}

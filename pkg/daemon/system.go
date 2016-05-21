@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	dc "github.com/fsouza/go-dockerclient"
 	"github.com/synrobo/deviced/pkg/config"
@@ -19,10 +20,11 @@ type System struct {
 	ConfigPath string
 	StatePath  string
 
-	Config       config.DevicedConfig
-	ConfigLock   sync.Mutex
-	State        state.DevicedState
-	DockerClient *dc.Client
+	Config        config.DevicedConfig
+	ConfigLock    sync.Mutex
+	ConfigWatcher *config.DevicedConfigWatcher
+	State         state.DevicedState
+	DockerClient  *dc.Client
 
 	ContainerWorker *containersync.ContainerSyncWorker
 }
@@ -75,10 +77,27 @@ func (s *System) initWorkers() int {
 	return 0
 }
 
+func (s *System) initWatchers() int {
+	s.ConfigWatcher = new(config.DevicedConfigWatcher)
+	s.ConfigWatcher.ConfigPath = &s.ConfigPath
+	if res := s.ConfigWatcher.Init(); res != 0 {
+		return res
+	}
+	return 0
+}
+
 // Wake the workers upon a config change
 func (s *System) wakeWorkers() {
 	fmt.Printf("Config changed, waking workers...\n")
 	s.ContainerWorker.WakeChannel <- true
+}
+
+func (s *System) closeWorkers() {
+	s.ContainerWorker.Quit()
+}
+
+func (s *System) closeWatchers() {
+	s.ConfigWatcher.Close()
 }
 
 func (s *System) Main() int {
@@ -87,6 +106,10 @@ func (s *System) Main() int {
 	}
 
 	if res := s.initWorkers(); res != 0 {
+		return res
+	}
+
+	if res := s.initWatchers(); res != 0 {
 		return res
 	}
 
@@ -100,6 +123,18 @@ func (s *System) Main() int {
 		case <-c:
 			keepRunning = false
 			break
+		case event := <-s.ConfigWatcher.ConfigWatcher.Events:
+			fmt.Printf("event:%s\n", event)
+			s.closeWatchers()
+			time.Sleep(500 * time.Millisecond)
+			s.ConfigLock.Lock()
+			didread := s.Config.ReadFrom(s.ConfigPath)
+			s.ConfigLock.Unlock()
+			if didread {
+				s.wakeWorkers()
+			}
+			s.initWatchers()
+			continue
 		case <-s.ContainerWorker.StateChangedChannel:
 			s.State.WriteState(s.StatePath)
 			continue
@@ -107,5 +142,7 @@ func (s *System) Main() int {
 	}
 	fmt.Println("Exiting...\n")
 	s.ContainerWorker.Quit()
+	s.closeWorkers()
+	s.closeWatchers()
 	return 0
 }
