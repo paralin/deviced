@@ -11,15 +11,16 @@ import (
 
 type RunningContainer struct {
 	// The corresponding deviced ID
-	DevicedID    string           `yaml:"devicedId"`
-	Image        string           `yaml:"image"`
-	ImageTag     string           `yaml:"imageTag"`
-	ApiContainer dc.APIContainers `yaml:"apiContainer"`
+	DevicedID    string            `yaml:"devicedId"`
+	Image        string            `yaml:"image"`
+	ImageTag     string            `yaml:"imageTag"`
+	Score        uint              "score,omitempty"
+	ApiContainer *dc.APIContainers `yaml:"apiContainer"`
 }
 
 // Stores state of container worker
 type ContainerWorkerState struct {
-	RunningContainers []RunningContainer `yaml:"runningContainers"`
+	RunningContainers map[string]*RunningContainer `yaml:"runningContainers"`
 }
 
 type DevicedState struct {

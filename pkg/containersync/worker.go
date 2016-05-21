@@ -53,7 +53,7 @@ func (cw *ContainerSyncWorker) Init() error {
 	return nil
 }
 
-func sleepShouldQuit(cw *ContainerSyncWorker, t Duration) bool {
+func sleepShouldQuit(cw *ContainerSyncWorker, t time.Duration) bool {
 	time.Sleep(t)
 	select {
 	case <-cw.QuitChannel:
@@ -63,6 +63,15 @@ func sleepShouldQuit(cw *ContainerSyncWorker, t Duration) bool {
 	default:
 		return false
 	}
+}
+
+func buildRunningContainer(ctr *dc.APIContainers, mt *config.TargetContainer, score uint) *state.RunningContainer {
+	nrc := new(state.RunningContainer)
+	nrc.DevicedID = mt.Id
+	nrc.Image, nrc.ImageTag = parseImageAndTag(ctr.Image)
+	nrc.ApiContainer = ctr
+	nrc.Score = score
+	return nrc
 }
 
 func parseImageAndTag(imagestr string) (string, string) {
@@ -93,7 +102,7 @@ func (cw *ContainerSyncWorker) Run() {
 		containers, err := cw.DockerClient.ListContainers(listOpts)
 		if err != nil {
 			fmt.Errorf("Unable to list containers, error: %v\n", err)
-			if sleepShouldQuit(time.Duration(2)) {
+			if sleepShouldQuit(cw, time.Duration(2)) {
 				return
 			}
 		}
@@ -103,7 +112,7 @@ func (cw *ContainerSyncWorker) Run() {
 		images, err := cw.DockerClient.ListImages(liOpts)
 		if err != nil {
 			fmt.Printf("Error fetching images list %v\n", err)
-			if sleepShouldQuit(time.Duration(2)) {
+			if sleepShouldQuit(cw, time.Duration(2)) {
 				return
 			}
 			continue
@@ -130,9 +139,9 @@ func (cw *ContainerSyncWorker) Run() {
 		tctrs := &cw.Config.Containers
 
 		// Sync containers to running containers list.
-		devicedIdToContainer := make(map[string]*dc.APIContainers)
-		devicedIdToContainerScore := make(map[string]uint)
+		devicedIdToContainer := make(map[string]*state.RunningContainer)
 		containersToDelete := []string{}
+		containersToCreate := []*dc.CreateContainerOptions{}
 		for _, ctr := range containers {
 			fmt.Printf("Container name: %s tag: %s\n", ctr.Names[0], ctr.Image)
 			image, imageTag := parseImageAndTag(ctr.Image)
@@ -153,6 +162,8 @@ func (cw *ContainerSyncWorker) Run() {
 				continue
 			}
 
+			runningContainer := buildRunningContainer(&ctr, matchingTarget, matchingTarget.ContainerVersionScore(imageTag))
+
 			if val, ok := devicedIdToContainer[matchingTarget.Id]; ok {
 				// We have an existing container that satisfies this target
 				// Pick one. Compare versions.
@@ -161,19 +172,80 @@ func (cw *ContainerSyncWorker) Run() {
 				otherScore := matchingTarget.ContainerVersionScore(oimageTag)
 				thisScore := matchingTarget.ContainerVersionScore(imageTag)
 				if thisScore < otherScore {
-					fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", ctr.ID, imageTag, val.ID, oimageTag)
-					devicedIdToContainer[matchingTarget.Id] = &ctr
-					devicedIdToContainerScore[matchingTarget.Id] = thisScore
-					containersToDelete = append(containersToDelete, val.ID)
+					fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", ctr.ID, imageTag, val.ApiContainer.ID, oimageTag)
+					devicedIdToContainer[matchingTarget.Id] = runningContainer
+					containersToDelete = append(containersToDelete, val.ApiContainer.ID)
 				} else {
-					fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", val.ID, oimageTag, ctr.ID, imageTag)
+					fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", val.ApiContainer.ID, oimageTag, ctr.ID, imageTag)
 					containersToDelete = append(containersToDelete, ctr.ID)
 				}
 			} else {
-				devicedIdToContainer[matchingTarget.Id] = &ctr
-				devicedIdToContainerScore[matchingTarget.Id] = matchingTarget.ContainerVersionScore(imageTag)
+				devicedIdToContainer[matchingTarget.Id] = runningContainer
 			}
 		}
+
+		// Decide if there's a better image for each target
+		for _, tctr := range cw.Config.Containers {
+			currentCtr := devicedIdToContainer[tctr.Id]
+			if currentCtr != nil && currentCtr.Score == 0 {
+				continue
+			}
+			images := availableTagMap[tctr.Image]
+			if len(images) == 0 {
+				fmt.Printf("Container %s has no available tags yet.\n", tctr.Image)
+				continue
+			}
+			selectedCtr := currentCtr
+			fmt.Printf("Container %s available tags:\n", tctr.Image)
+			for _, avail := range images {
+				score := tctr.ContainerVersionScore(avail)
+				fmt.Printf(" => %s score %d\n", avail, score)
+				// will be int.max if invalid
+				if !tctr.UseAnyVersion && score > 1000 {
+					continue
+				}
+				if currentCtr != nil && avail == currentCtr.ImageTag {
+					continue
+				}
+				if currentCtr != nil && currentCtr.Score < score {
+					continue
+				}
+				selectedCtr = new(state.RunningContainer)
+				selectedCtr.DevicedID = tctr.Id
+				selectedCtr.Image = tctr.Image
+				selectedCtr.ImageTag = avail
+				selectedCtr.Score = score
+				selectedCtr.ApiContainer = nil
+			}
+			if selectedCtr == nil {
+				fmt.Printf("Container %s has no suitable image, skipping.\n", tctr.Image)
+				continue
+			}
+			if currentCtr == selectedCtr {
+				fmt.Printf("Container %s has no better image than the current, skipping.\n", tctr.Image)
+				continue
+			}
+			if currentCtr != nil && selectedCtr != currentCtr {
+				fmt.Printf("Replacing container %s:%s with new container at %s:%s\n", currentCtr.Image, currentCtr.ImageTag, selectedCtr.Image, selectedCtr.ImageTag)
+				containersToDelete = append(containersToDelete, currentCtr.ApiContainer.ID)
+			}
+			fmt.Printf("Starting container %s:%s...\n", selectedCtr.Image, selectedCtr.ImageTag)
+			tctr.Options.Name = strings.Join([]string{"deviced", tctr.Id}, "_")
+			if tctr.Options.Config == nil {
+				tctr.Options.Config = new(dc.Config)
+			}
+			if tctr.Options.Config.Labels == nil {
+				tctr.Options.Config.Labels = make(map[string]string)
+			}
+			tctr.Options.Config.Labels["mangedby"] = "deviced"
+			tctr.Options.Config.Image = strings.Join([]string{selectedCtr.Image, selectedCtr.ImageTag}, ":")
+			containersToCreate = append(containersToCreate, &tctr.Options)
+			devicedIdToContainer[tctr.Id] = selectedCtr
+		}
+		cw.State.RunningContainers = devicedIdToContainer
+
+		// Unlock config
+		cw.ConfigLock.Unlock()
 
 		// We have picked the containers to keep. Delete the others.
 		for _, cid := range containersToDelete {
@@ -184,22 +256,19 @@ func (cw *ContainerSyncWorker) Run() {
 		}
 		containersToDelete = nil
 
-		// Build an array of RunningContainer
-		nrunning := make([]*state.RunningContainer, len(devicedIdToContainer))
-		idx := 0
-		for mtid, ctr := range devicedIdToContainer {
-			nrc := new(state.RunningContainer)
-			nrunning[idx] = nrc
-			nrc.DevicedID = mtid
-			nrc.Image, nrc.ImageTag = parseImageAndTag(ctr.Image)
-			nrc.ApiContainer = *ctr
-			idx++
+		for _, ctr := range containersToCreate {
+			created, err := cw.DockerClient.CreateContainer(*ctr)
+			if err != nil {
+				fmt.Printf("Container creation error: %v\n", err)
+				continue
+			}
+			err = cw.DockerClient.StartContainer(created.ID, nil)
+			if err != nil {
+				fmt.Printf("Container start error: %v\n", err)
+			}
 		}
+		containersToCreate = nil
 
-		// Calculate the best available score for downloaded images
-
-		// Unlock config
-		cw.ConfigLock.Unlock()
 		cw.StateChangedChannel <- true
 
 		for {
