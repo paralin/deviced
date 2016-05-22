@@ -131,7 +131,7 @@ func (cw *ContainerSyncWorker) Run() {
 		// Sync containers to running containers list.
 		devicedIdToContainer := make(map[string]*state.RunningContainer)
 		containersToDelete := []string{}
-		containersToCreate := []*dc.CreateContainerOptions{}
+		containersToCreate := []dc.CreateContainerOptions{}
 		for _, ctr := range containers {
 			fmt.Printf("Container name: %s tag: %s\n", ctr.Names[0], ctr.Image)
 			image, imageTag := utils.ParseImageAndTag(ctr.Image)
@@ -229,7 +229,7 @@ func (cw *ContainerSyncWorker) Run() {
 			}
 			tctr.Options.Config.Labels["mangedby"] = "deviced"
 			tctr.Options.Config.Image = strings.Join([]string{selectedCtr.Image, selectedCtr.ImageTag}, ":")
-			containersToCreate = append(containersToCreate, &tctr.Options)
+			containersToCreate = append(containersToCreate, tctr.Options)
 			devicedIdToContainer[tctr.Id] = selectedCtr
 		}
 		cw.State.RunningContainers = devicedIdToContainer
@@ -247,7 +247,7 @@ func (cw *ContainerSyncWorker) Run() {
 		containersToDelete = nil
 
 		for _, ctr := range containersToCreate {
-			created, err := cw.DockerClient.CreateContainer(*ctr)
+			created, err := cw.DockerClient.CreateContainer(ctr)
 			if err != nil {
 				fmt.Printf("Container creation error: %v\n", err)
 				continue

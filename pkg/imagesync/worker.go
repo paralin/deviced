@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,8 +57,13 @@ func (iw *ImageSyncWorker) sleepShouldQuit(t time.Duration) bool {
 type imageToFetch struct {
 	FetchAny    bool
 	NeededTags  []string
-	AvailableAt map[string][]*distribution.Repository
-	Target      *config.TargetContainer
+	AvailableAt map[string][]availableDownloadRepository
+	Target      config.TargetContainer
+}
+
+type availableDownloadRepository struct {
+	Repo    *distribution.Repository
+	RepoRef *config.RemoteRepository
 }
 
 func (iw *ImageSyncWorker) Run() {
@@ -135,7 +142,8 @@ func (iw *ImageSyncWorker) Run() {
 			toFetch := new(imageToFetch)
 			toFetch.FetchAny = ctr.UseAnyVersion
 			toFetch.NeededTags = tagsToFetch
-			toFetch.Target = &ctr
+			toFetch.Target = ctr
+			toFetch.AvailableAt = make(map[string][]availableDownloadRepository)
 			imagesToFetch = append(imagesToFetch, toFetch)
 		}
 
@@ -143,6 +151,8 @@ func (iw *ImageSyncWorker) Run() {
 			iw.ConfigLock.Unlock()
 			continue
 		}
+
+		fmt.Printf("Preparing to fetch %d repos...\n", len(imagesToFetch))
 
 		// Build registry client
 		// Rebuild the registry list
@@ -158,14 +168,20 @@ func (iw *ImageSyncWorker) Run() {
 			}
 			service := registry.NewService(registry.ServiceOptions{InsecureRegistries: insecureRegs})
 			for _, tf := range imagesToFetch {
-				ref, err := reference.ParseNamed(tf.Target.Image)
+				image := tf.Target.Image
+				imagePts := strings.Split(image, "/")
+				if len(imagePts) == 1 {
+					image = strings.Join([]string{"library", image}, "/")
+					tf.Target.Image = image
+				}
+				ref, err := reference.ParseNamed(image)
 				if err != nil {
-					fmt.Printf("Error parsing reference %s, %v.\n", tf.Target.Image, err)
+					fmt.Printf("Error parsing reference %s, %v.\n", image, err)
 					continue
 				}
 				info, err := registry.ParseRepositoryInfo(ref)
 				if err != nil {
-					fmt.Printf("Error parsing repository info %s, %v.\n", tf.Target.Image, err)
+					fmt.Printf("Error parsing repository info %s, %v.\n", image, err)
 					continue
 				}
 				endpoints, err := service.LookupPullEndpoints(urlParsed.Host)
@@ -194,21 +210,44 @@ func (iw *ImageSyncWorker) Run() {
 				// tags is the tag service
 				tags, err := reg.Tags(iw.RegistryContext).All(iw.RegistryContext)
 				if err != nil {
-					fmt.Printf("Error checking '%s' for %s, %v\n", rege.Url, tf.Target.Image, err)
+					fmt.Printf("Error checking '%s' for %s, %v\n", rege.Url, image, err)
 					continue
 				}
+				fmt.Printf("From %s, %s is available with %d tags.\n", rege.Url, image, len(tags))
 				for _, tag := range tags {
-					fmt.Printf("%s, available tag %s\n", tf.Target.Image, tag)
-					tf.AvailableAt[tag] = append(tf.AvailableAt[tag], &reg)
+					tf.AvailableAt[tag] = append(tf.AvailableAt[tag], availableDownloadRepository{
+						Repo:    &reg,
+						RepoRef: &rege,
+					})
 				}
 			}
 			iw.ConfigLock.Unlock()
 
 			for _, tf := range imagesToFetch {
+				matchedOne := false
 				for _, tag := range tf.NeededTags {
 					for _, reg := range tf.AvailableAt[tag] {
-						_ = reg
-						fmt.Printf("%s:%s: available, downloading...\n", tf.Target.Image, tag)
+						fmt.Printf("%s:%s available from %s, pulling...\n", tf.Target.Image, tag, reg.RepoRef.Url)
+						popts := dc.PullImageOptions{
+							Repository: tf.Target.Image,
+							Tag:        tag,
+							// OutputStream: os.Stdout,
+							Registry: reg.RepoRef.PullPrefix,
+						}
+						authopts := dc.AuthConfiguration{
+							Username: reg.RepoRef.Username,
+							Password: reg.RepoRef.Password,
+						}
+						err := iw.DockerClient.PullImage(popts, authopts)
+						if err != nil {
+							fmt.Printf("Failed to pull %s:%s from %s, %v\n", tf.Target.Image, tag, reg.RepoRef.Url)
+							continue
+						}
+						matchedOne = true
+						break
+					}
+					if matchedOne {
+						break
 					}
 				}
 			}
