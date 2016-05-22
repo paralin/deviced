@@ -9,6 +9,7 @@ import (
 	dc "github.com/fsouza/go-dockerclient"
 	"github.com/synrobo/deviced/pkg/config"
 	"github.com/synrobo/deviced/pkg/state"
+	"github.com/synrobo/deviced/pkg/utils"
 )
 
 /* Container Sync Worker
@@ -53,7 +54,7 @@ func (cw *ContainerSyncWorker) Init() error {
 	return nil
 }
 
-func sleepShouldQuit(cw *ContainerSyncWorker, t time.Duration) bool {
+func (cw *ContainerSyncWorker) sleepShouldQuit(t time.Duration) bool {
 	time.Sleep(t)
 	select {
 	case <-cw.QuitChannel:
@@ -68,22 +69,10 @@ func sleepShouldQuit(cw *ContainerSyncWorker, t time.Duration) bool {
 func buildRunningContainer(ctr *dc.APIContainers, mt *config.TargetContainer, score uint) *state.RunningContainer {
 	nrc := new(state.RunningContainer)
 	nrc.DevicedID = mt.Id
-	nrc.Image, nrc.ImageTag = parseImageAndTag(ctr.Image)
+	nrc.Image, nrc.ImageTag = utils.ParseImageAndTag(ctr.Image)
 	nrc.ApiContainer = ctr
 	nrc.Score = score
 	return nrc
-}
-
-func parseImageAndTag(imagestr string) (string, string) {
-	imagePts := strings.Split(imagestr, ":")
-	image := imagePts[0]
-	var imageTag string
-	if len(imagePts) < 2 {
-		imageTag = "latest"
-	} else {
-		imageTag = imagePts[1]
-	}
-	return image, imageTag
 }
 
 func (cw *ContainerSyncWorker) Run() {
@@ -100,6 +89,7 @@ func (cw *ContainerSyncWorker) Run() {
 				break
 			}
 		}
+
 		// Load the current container list
 		listOpts := dc.ListContainersOptions{
 			All:  true,
@@ -114,7 +104,7 @@ func (cw *ContainerSyncWorker) Run() {
 		containers, err := cw.DockerClient.ListContainers(listOpts)
 		if err != nil {
 			fmt.Errorf("Unable to list containers, error: %v\n", err)
-			if sleepShouldQuit(cw, time.Duration(2*time.Second)) {
+			if cw.sleepShouldQuit(time.Duration(2 * time.Second)) {
 				return
 			}
 		}
@@ -124,25 +114,13 @@ func (cw *ContainerSyncWorker) Run() {
 		images, err := cw.DockerClient.ListImages(liOpts)
 		if err != nil {
 			fmt.Printf("Error fetching images list %v\n", err)
-			if sleepShouldQuit(cw, time.Duration(2*time.Second)) {
+			if cw.sleepShouldQuit(time.Duration(2 * time.Second)) {
 				return
 			}
 			continue
 		}
 
-		// Map of image name -> available tag list
-		availableTagMap := map[string][]string{}
-		for _, img := range images {
-			for _, tagfull := range img.RepoTags {
-				if strings.Contains(tagfull, "<none>") {
-					continue
-				}
-				image, tag := parseImageAndTag(tagfull)
-				tagList := availableTagMap[image]
-				tagList = append(tagList, tag)
-				availableTagMap[image] = tagList
-			}
-		}
+		availableTagMap := utils.BuildImageMap(&images)
 
 		// Lock config
 		cw.ConfigLock.Lock()
@@ -156,7 +134,7 @@ func (cw *ContainerSyncWorker) Run() {
 		containersToCreate := []*dc.CreateContainerOptions{}
 		for _, ctr := range containers {
 			fmt.Printf("Container name: %s tag: %s\n", ctr.Names[0], ctr.Image)
-			image, imageTag := parseImageAndTag(ctr.Image)
+			image, imageTag := utils.ParseImageAndTag(ctr.Image)
 
 			// try to match the container to a target container
 			// match by image
@@ -180,7 +158,7 @@ func (cw *ContainerSyncWorker) Run() {
 				// We have an existing container that satisfies this target
 				// Pick one. Compare versions.
 				// Lower is better.
-				_, oimageTag := parseImageAndTag(val.Image)
+				_, oimageTag := utils.ParseImageAndTag(val.Image)
 				otherScore := matchingTarget.ContainerVersionScore(oimageTag)
 				thisScore := matchingTarget.ContainerVersionScore(imageTag)
 				if thisScore < otherScore {

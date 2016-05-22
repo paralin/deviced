@@ -1,9 +1,12 @@
 package config
 
 type RemoteRepository struct {
-	Url      string
-	Username string "username,omitempty"
-	Password string "password,omitempty"
+	Url         string              "url"
+	PullPrefix  string              "pullPrefix"
+	Username    string              "username,omitempty"
+	Password    string              "password,omitempty"
+	MetaHeaders map[string][]string "metaHeaders,omitempty"
+	Insecure    bool                "insecure,omitempty"
 }
 
 func (r *RemoteRepository) RequiresAuth() bool {

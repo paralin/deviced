@@ -12,6 +12,7 @@ import (
 	dc "github.com/fsouza/go-dockerclient"
 	"github.com/synrobo/deviced/pkg/config"
 	"github.com/synrobo/deviced/pkg/containersync"
+	"github.com/synrobo/deviced/pkg/imagesync"
 	"github.com/synrobo/deviced/pkg/state"
 )
 
@@ -27,6 +28,7 @@ type System struct {
 	DockerClient  *dc.Client
 
 	ContainerWorker *containersync.ContainerSyncWorker
+	ImageWorker     *imagesync.ImageSyncWorker
 }
 
 func (s *System) initHomeDir() int {
@@ -35,7 +37,7 @@ func (s *System) initHomeDir() int {
 	if _, err := os.Stat(s.HomeDir); os.IsNotExist(err) {
 		fmt.Printf("Creating config directory %s...\n", s.HomeDir)
 		if err := os.MkdirAll(s.HomeDir, 0777); err != nil {
-			fmt.Errorf("Unable to create config dir %s, error %s.\n", s.HomeDir, err)
+			fmt.Printf("Unable to create config dir %s, error %s.\n", s.HomeDir, err)
 			return 1
 		}
 	}
@@ -60,9 +62,16 @@ func (s *System) initWorkers() int {
 
 	s.DockerClient, err = s.Config.DockerConfig.BuildClient()
 	if err != nil {
-		fmt.Errorf("Unable to create docker client, %v\n", err)
+		fmt.Printf("Unable to create docker client, %v\n", err)
 		return 1
 	}
+
+	iw := new(imagesync.ImageSyncWorker)
+	iw.ConfigLock = &s.ConfigLock
+	iw.DockerClient = s.DockerClient
+	iw.Config = &s.Config
+	iw.Init()
+	s.ImageWorker = iw
 
 	s.ContainerWorker = new(containersync.ContainerSyncWorker)
 	cw := s.ContainerWorker
@@ -71,9 +80,10 @@ func (s *System) initWorkers() int {
 	cw.Config = &s.Config
 	cw.State = &s.State.ContainerWorkerState
 	if err = cw.Init(); err != nil {
-		fmt.Errorf("Error initializing ContainerWorker, %v\n", err)
+		fmt.Printf("Error initializing ContainerWorker, %v\n", err)
 		return 1
 	}
+
 	return 0
 }
 
@@ -90,10 +100,12 @@ func (s *System) initWatchers() int {
 func (s *System) wakeWorkers() {
 	fmt.Printf("Config changed, waking workers...\n")
 	s.ContainerWorker.WakeChannel <- true
+	s.ImageWorker.WakeChannel <- true
 }
 
 func (s *System) closeWorkers() {
 	s.ContainerWorker.Quit()
+	s.ImageWorker.Quit()
 }
 
 func (s *System) closeWatchers() {
@@ -113,10 +125,14 @@ func (s *System) Main() int {
 		return res
 	}
 
-	fmt.Printf("Loaded, starting workers...\n")
+	fmt.Printf("Starting image worker...\n")
+	go s.ImageWorker.Run()
+	fmt.Printf("Starting container worker...\n")
 	go s.ContainerWorker.Run()
+
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
 	keepRunning := true
 	for keepRunning {
 		select {
@@ -126,7 +142,7 @@ func (s *System) Main() int {
 		case event := <-s.ConfigWatcher.ConfigWatcher.Events:
 			fmt.Printf("event:%s\n", event)
 			s.closeWatchers()
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 			s.ConfigLock.Lock()
 			didread := s.Config.ReadFrom(s.ConfigPath)
 			s.ConfigLock.Unlock()
@@ -141,7 +157,6 @@ func (s *System) Main() int {
 		}
 	}
 	fmt.Println("Exiting...\n")
-	s.ContainerWorker.Quit()
 	s.closeWorkers()
 	s.closeWatchers()
 	return 0

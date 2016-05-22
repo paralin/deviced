@@ -1,8 +1,0 @@
-package: github.com/synrobo/deviced
-import:
-- package: github.com/fsouza/go-dockerclient
-- package: github.com/fsnotify/fsnotify
-- package: github.com/golang/glog
-- package: github.com/spf13/cobra
-- package: github.com/go-yaml/yaml
-- package: github.com/docker/distribution
