@@ -121,6 +121,11 @@ func (s *System) wakeWorkers() {
 	s.ImageWorker.WakeChannel <- true
 }
 
+func (s *System) triggerConfRecheck() {
+	fmt.Printf("Config changed, rechecking config...\n")
+	s.ImageWorker.RecheckConfig()
+}
+
 func (s *System) closeWorkers() {
 	s.ContainerWorker.Quit()
 	s.ImageWorker.Quit()
@@ -165,6 +170,7 @@ func (s *System) Main() int {
 			didread := s.Config.ReadFrom(s.ConfigPath)
 			s.ConfigLock.Unlock()
 			if didread {
+				s.triggerConfRecheck()
 				s.wakeWorkers()
 			}
 			s.initWatchers()

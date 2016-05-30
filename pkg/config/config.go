@@ -10,6 +10,7 @@ import (
 
 type DevicedConfig struct {
 	ContainerConfig ContainerWorkerConfig "containerConfig"
+	ImageConfig     ImageWorkerConfig     "imageConfig"
 	DockerConfig    DockerClientConfig    "dockerConfig"
 	Repos           []RemoteRepository    "repos"
 	Containers      []TargetContainer     "containers"
@@ -35,6 +36,7 @@ func (c *DevicedConfig) writeConfig(path string) bool {
 
 func (c *DevicedConfig) FillWithDefaults() {
 	c.DockerConfig.FillWithDefaults()
+	c.ImageConfig.FillWithDefaults()
 }
 
 func (c *DevicedConfig) ReadFrom(confPath string) bool {

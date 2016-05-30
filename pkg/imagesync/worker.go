@@ -25,9 +25,11 @@ type ImageSyncWorker struct {
 	ConfigLock   *sync.Mutex
 	DockerClient *dc.Client
 
-	Running     bool
-	WakeChannel chan bool
-	QuitChannel chan bool
+	Running      bool
+	WakeChannel  chan bool
+	QuitChannel  chan bool
+	RecheckTimer *time.Timer
+	UnsolvedReqs bool
 
 	RegistryContext context.Context
 }
@@ -37,6 +39,30 @@ func (iw *ImageSyncWorker) Init() {
 	iw.WakeChannel = make(chan bool, 1)
 	iw.QuitChannel = make(chan bool, 1)
 	iw.RegistryContext = context.Background()
+}
+
+func (iw *ImageSyncWorker) killRecheckTimer() {
+	if iw.RecheckTimer != nil {
+		iw.RecheckTimer.Stop()
+		iw.RecheckTimer = nil
+	}
+}
+
+func (iw *ImageSyncWorker) initRecheckTimer() {
+	// create with a dummy value initially
+	iw.killRecheckTimer()
+	iw.ConfigLock.Lock()
+	iw.RecheckTimer = time.NewTimer(time.Second * time.Duration(10))
+	if iw.Config.ImageConfig.RecheckPeriod < 1 || !iw.UnsolvedReqs {
+		iw.RecheckTimer.Stop()
+	} else {
+		iw.RecheckTimer.Reset(time.Second * time.Duration(iw.Config.ImageConfig.RecheckPeriod))
+	}
+	iw.ConfigLock.Unlock()
+}
+
+func (iw *ImageSyncWorker) RecheckConfig() {
+	iw.killRecheckTimer()
 }
 
 func (iw *ImageSyncWorker) sleepShouldQuit(t time.Duration) bool {
@@ -68,7 +94,10 @@ type availableDownloadRepository struct {
 func (iw *ImageSyncWorker) Run() {
 	doRecheck := true
 	for iw.Running {
-		fmt.Printf("ImageSyncWorker sleeping...\n")
+		if !doRecheck {
+			fmt.Printf("ImageSyncWorker sleeping...\n")
+			iw.initRecheckTimer()
+		}
 		for !doRecheck {
 			select {
 			case <-iw.QuitChannel:
@@ -78,9 +107,15 @@ func (iw *ImageSyncWorker) Run() {
 				fmt.Printf("ImageSyncWorker woken, re-checking...\n")
 				doRecheck = true
 				break
+			case <-iw.RecheckTimer.C:
+				fmt.Printf("ImageSyncWorker timer elapsed, re-checking...\n")
+				doRecheck = true
+				break
 			}
 		}
 		doRecheck = false
+		iw.killRecheckTimer()
+		iw.UnsolvedReqs = false
 		fmt.Printf("ImageSyncWorker checking repositories...\n")
 
 		iw.ConfigLock.Lock()
@@ -224,7 +259,8 @@ func (iw *ImageSyncWorker) Run() {
 
 			for _, tf := range imagesToFetch {
 				matchedOne := false
-				for _, tag := range tf.NeededTags {
+				matchedBest := false
+				for idx, tag := range tf.NeededTags {
 					for _, reg := range tf.AvailableAt[tag] {
 						fmt.Printf("%s:%s available from %s, pulling...\n", tf.Target.Image, tag, reg.RepoRef.Url)
 						popts := dc.PullImageOptions{
@@ -243,11 +279,17 @@ func (iw *ImageSyncWorker) Run() {
 							continue
 						}
 						matchedOne = true
+						if idx == 0 {
+							matchedBest = true
+						}
 						break
 					}
 					if matchedOne {
 						break
 					}
+				}
+				if !matchedOne || !matchedBest {
+					iw.UnsolvedReqs = true
 				}
 			}
 
