@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
