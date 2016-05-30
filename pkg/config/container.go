@@ -13,9 +13,9 @@ type TargetContainer struct {
 	// [namespace/]name no version
 	Image string "image"
 	// acceptable version tags, in order of priority
-	Versions []string "versions"
-	// Use any version until the target version is available
+	Versions      []string                  "versions"
 	UseAnyVersion bool                      "useAnyVersion,omitempty"
+	RestartExited bool                      "restartExited"
 	Options       dc.CreateContainerOptions "containerOptions,omitempty"
 }
 

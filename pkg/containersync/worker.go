@@ -100,7 +100,7 @@ func (cw *ContainerSyncWorker) Run() {
 
 		if !cw.Config.ContainerConfig.ManageAllContainers {
 			listOpts.Filters = map[string][]string{}
-			listOpts.Filters["label"] = []string{"deviced_id"}
+			listOpts.Filters["label"] = []string{"deviced.id"}
 		}
 
 		containers, err := cw.DockerClient.ListContainers(listOpts)
@@ -132,7 +132,8 @@ func (cw *ContainerSyncWorker) Run() {
 
 		// Sync containers to running containers list.
 		devicedIdToContainer := make(map[string]*state.RunningContainer)
-		containersToDelete := []string{}
+		containersToDelete := make(map[string]bool)
+		containersToStart := make(map[string]bool)
 		containersToCreate := []dc.CreateContainerOptions{}
 		for _, ctr := range containers {
 			fmt.Printf("Container name: %s tag: %s\n", ctr.Names[0], ctr.Image)
@@ -149,8 +150,14 @@ func (cw *ContainerSyncWorker) Run() {
 			}
 
 			if matchingTarget == nil {
-				fmt.Printf("Cannot find match for container %s, scheduling delete.\n", ctr.Image)
-				containersToDelete = append(containersToDelete, ctr.ID)
+				fmt.Printf("Cannot find match for container %s (%s), scheduling delete.\n", ctr.Names[0], ctr.Image)
+				containersToDelete[ctr.ID] = true
+				continue
+			}
+
+			if ctr.State != "running" && !matchingTarget.RestartExited {
+				fmt.Printf("Container %s (%s) not running and RestartExited not set, killing.\n", ctr.Names[0], ctr.Image)
+				containersToDelete[ctr.ID] = true
 				continue
 			}
 
@@ -166,10 +173,12 @@ func (cw *ContainerSyncWorker) Run() {
 				if thisScore < otherScore {
 					fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", ctr.ID, imageTag, val.ApiContainer.ID, oimageTag)
 					devicedIdToContainer[matchingTarget.Id] = runningContainer
-					containersToDelete = append(containersToDelete, val.ApiContainer.ID)
+					containersToDelete[val.ApiContainer.ID] = true
+					containersToStart[ctr.ID] = true
 				} else {
 					fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", val.ApiContainer.ID, oimageTag, ctr.ID, imageTag)
-					containersToDelete = append(containersToDelete, ctr.ID)
+					containersToDelete[ctr.ID] = true
+					containersToStart[val.ApiContainer.ID] = true
 				}
 			} else {
 				devicedIdToContainer[matchingTarget.Id] = runningContainer
@@ -219,7 +228,7 @@ func (cw *ContainerSyncWorker) Run() {
 			}
 			if currentCtr != nil && selectedCtr != currentCtr {
 				fmt.Printf("Replacing container %s:%s with new container at %s:%s\n", currentCtr.Image, currentCtr.ImageTag, selectedCtr.Image, selectedCtr.ImageTag)
-				containersToDelete = append(containersToDelete, currentCtr.ApiContainer.ID)
+				containersToDelete[currentCtr.ApiContainer.ID] = true
 			}
 			fmt.Printf("Starting container %s:%s...\n", selectedCtr.Image, selectedCtr.ImageTag)
 			tctr.Options.Name = strings.Join([]string{"deviced", tctr.Id}, "_")
@@ -229,7 +238,7 @@ func (cw *ContainerSyncWorker) Run() {
 			if tctr.Options.Config.Labels == nil {
 				tctr.Options.Config.Labels = make(map[string]string)
 			}
-			tctr.Options.Config.Labels["deviced_id"] = tctr.Id
+			tctr.Options.Config.Labels["deviced.id"] = tctr.Id
 			tctr.Options.Config.Image = strings.Join([]string{selectedCtr.Image, selectedCtr.ImageTag}, ":")
 			containersToCreate = append(containersToCreate, tctr.Options)
 			devicedIdToContainer[tctr.Id] = selectedCtr
@@ -240,19 +249,19 @@ func (cw *ContainerSyncWorker) Run() {
 		cw.ConfigLock.Unlock()
 
 		// We have picked the containers to keep. Delete the others.
-		deleteSelf := false
-		for _, cid := range containersToDelete {
+		for cid, _ := range containersToDelete {
 			if cw.Reflection != nil && cw.Reflection.Container.ID == cid {
-				deleteSelf = true
-				fmt.Printf("Queuing deletion of ourselves...\n")
-				continue
+				if !cw.Config.ContainerConfig.AllowSelfDelete {
+					fmt.Printf("Preventing deletion of ourselves...\n")
+					continue
+				}
+				fmt.Printf("Allowing self deletion...\n")
 			}
 			opts := dc.RemoveContainerOptions{ID: cid, Force: true}
 			if err := cw.DockerClient.RemoveContainer(opts); err != nil {
 				fmt.Printf("Error attempting to remove container, %v\n", err)
 			}
 		}
-		containersToDelete = nil
 
 		for _, ctr := range containersToCreate {
 			created, err := cw.DockerClient.CreateContainer(ctr)
@@ -260,21 +269,18 @@ func (cw *ContainerSyncWorker) Run() {
 				fmt.Printf("Container creation error: %v\n", err)
 				continue
 			}
-			err = cw.DockerClient.StartContainer(created.ID, nil)
-			if err != nil {
-				fmt.Printf("Container start error: %v\n", err)
-			}
+			containersToStart[created.ID] = true
 		}
-		containersToCreate = nil
 
-		if deleteSelf {
-			fmt.Printf("Deleting our own container...\n")
-			cid := cw.Reflection.Container.ID
-			opts := dc.RemoveContainerOptions{ID: cid, Force: true}
-			if err := cw.DockerClient.RemoveContainer(opts); err != nil {
-				fmt.Printf("Error attempting to delete ourselves, %v\n", err)
+		for ctr, _ := range containersToStart {
+			err = cw.DockerClient.StartContainer(ctr, nil)
+			if err != nil {
+				if !strings.Contains(err.Error(), "already running") {
+					fmt.Printf("Container start error: %v\n", err)
+				}
 			}
 		}
+		containersToStart = nil
 
 		cw.StateChangedChannel <- true
 

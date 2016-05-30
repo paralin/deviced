@@ -32,8 +32,5 @@ What happens if deviced is running in a container, and it needs to replace itsel
 
 A few protections are in place:
 
- - Deviced will never delete itself without a replace operation
- - When replacing itself it will create a new container first, start it, THEN delete itself.
- - Any update operations are done AFTER all other operations are complete.
- - Deviced will look itself up in the container list as a startup procedure, to mirror all the startup options it had before.
- - mergo is used to merge the old config with the new one, unless `devicedIgnoreOldOptions` is set
+ - Deviced will never delete itself
+ - When replacing itself it will create a new container first, start it, THEN it expects the new container to delete the old.
