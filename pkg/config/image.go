@@ -9,6 +9,6 @@ type ImageWorkerConfig struct {
 func (c *ImageWorkerConfig) FillWithDefaults() {
 	if c.RecheckPeriod == 0 {
 		c.RecheckPeriod = 60
-		fmt.Printf("Using default recheck period of %\n", c.RecheckPeriod)
+		fmt.Printf("Using default recheck period of %d\n", c.RecheckPeriod)
 	}
 }

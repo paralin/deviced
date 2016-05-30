@@ -91,6 +91,193 @@ type availableDownloadRepository struct {
 	RepoRef *config.RemoteRepository
 }
 
+func (iw *ImageSyncWorker) processOnce() {
+	iw.killRecheckTimer()
+	iw.UnsolvedReqs = false
+	fmt.Printf("ImageSyncWorker checking repositories...\n")
+	iw.ConfigLock.Lock()
+	repoLen := len(iw.Config.Repos)
+	defer iw.ConfigLock.Unlock()
+	if repoLen == 0 {
+		fmt.Printf("No repositories given in config.\n")
+		return
+	}
+
+	// Load the current image list
+	liOpts := dc.ListImagesOptions{}
+	images, err := iw.DockerClient.ListImages(liOpts)
+	if err != nil {
+		fmt.Printf("Error fetching images list %v\n", err)
+		return
+	}
+
+	imageMap := utils.BuildImageMap(&images)
+
+	// For each target container grab the best tag available currently
+	// If the best tag is score 0 don't check it
+	// We only want to fetch better than the current best.
+	var imagesToFetch []*imageToFetch
+	for _, ctr := range iw.Config.Containers {
+		image := &ctr.Image
+		availableTags := imageMap[*image]
+		bestAvailable := ""
+		var bestAvailableScore uint
+		bestAvailableScore = math.MaxUint16
+		for _, avail := range availableTags {
+			score := ctr.ContainerVersionScore(avail)
+			if score < bestAvailableScore {
+				bestAvailableScore = score
+				bestAvailable = avail
+			}
+		}
+		if bestAvailableScore == 0 || (len(ctr.Versions) == 0 && !ctr.UseAnyVersion) {
+			continue
+		}
+		// fetch anything from index 0 to bestAvailableScore (non inclusive)
+		var tagsToFetch []string
+		if bestAvailable == "" {
+			tagsToFetch = ctr.Versions
+		} else {
+			tagsToFetch = ctr.Versions[:bestAvailableScore]
+		}
+		fmt.Printf("We need to fetch images for %s\n", *image)
+		fmt.Printf("Best available: %s score: %d\n", bestAvailable, bestAvailableScore)
+		fmt.Printf("Versions to fetch: %v\n", tagsToFetch)
+		if ctr.UseAnyVersion {
+			fmt.Printf("... but we will settle for any version.\n")
+		}
+		toFetch := new(imageToFetch)
+		toFetch.FetchAny = ctr.UseAnyVersion
+		toFetch.NeededTags = tagsToFetch
+		toFetch.Target = ctr
+		toFetch.AvailableAt = make(map[string][]availableDownloadRepository)
+		imagesToFetch = append(imagesToFetch, toFetch)
+	}
+
+	if len(imagesToFetch) == 0 {
+		return
+	}
+
+	fmt.Printf("Preparing to fetch %d repos...\n", len(imagesToFetch))
+
+	// Build registry client
+	// Rebuild the registry list
+	for _, rege := range iw.Config.Repos {
+		urlParsed, err := url.Parse(rege.Url)
+		if err != nil {
+			fmt.Printf("Unable to parse url %s, %v\n", rege.Url, err)
+			continue
+		}
+		var insecureRegs []string
+		if rege.Insecure {
+			insecureRegs = []string{urlParsed.Host}
+		}
+		service := registry.NewService(registry.ServiceOptions{InsecureRegistries: insecureRegs})
+		for _, tf := range imagesToFetch {
+			image := tf.Target.Image
+			imagePts := strings.Split(image, "/")
+			if len(imagePts) == 1 {
+				image = strings.Join([]string{"library", image}, "/")
+				tf.Target.Image = image
+			}
+			ref, err := reference.ParseNamed(image)
+			if err != nil {
+				fmt.Printf("Error parsing reference %s, %v.\n", image, err)
+				continue
+			}
+			info, err := registry.ParseRepositoryInfo(ref)
+			if err != nil {
+				fmt.Printf("Error parsing repository info %s, %v.\n", image, err)
+				continue
+			}
+			endpoints, err := service.LookupPullEndpoints(urlParsed.Host)
+			if err != nil {
+				fmt.Printf("Error parsing endpoints %s, %v.\n", rege.Url, err)
+				continue
+			}
+			metaHeaders := rege.MetaHeaders
+			authConfig := &types.AuthConfig{Username: rege.Username, Password: rege.Password}
+			successfullyConnected := false
+			// var endpoint registry.APIEndpoint
+			var reg distribution.Repository
+			for _, endp := range endpoints {
+				reg, _, err = ddistro.NewV2Repository(iw.RegistryContext, info, endp, metaHeaders, authConfig, "pull")
+				if err != nil {
+					fmt.Printf("Error connecting to '%s', %v\n", rege.Url, err)
+					continue
+				}
+				successfullyConnected = true
+				break
+			}
+			if !successfullyConnected {
+				fmt.Printf("Unable to connect successfully to %s.\n", rege.Url)
+				continue
+			}
+			// tags is the tag service
+			tags, err := reg.Tags(iw.RegistryContext).All(iw.RegistryContext)
+			if err != nil {
+				fmt.Printf("Error checking '%s' for %s, %v\n", rege.Url, image, err)
+				continue
+			}
+			fmt.Printf("From %s, %s is available with %d tags.\n", rege.Url, image, len(tags))
+			for _, tag := range tags {
+				tf.AvailableAt[tag] = append(tf.AvailableAt[tag], availableDownloadRepository{
+					Repo:    &reg,
+					RepoRef: &rege,
+				})
+			}
+		}
+
+		for _, tf := range imagesToFetch {
+			matchedOne := false
+			matchedBest := false
+			for idx, tag := range tf.NeededTags {
+				for _, reg := range tf.AvailableAt[tag] {
+					fmt.Printf("%s:%s available from %s, pulling...\n", tf.Target.Image, tag, reg.RepoRef.Url)
+					popts := dc.PullImageOptions{
+						Repository: tf.Target.Image,
+						Tag:        tag,
+						// OutputStream: os.Stdout,
+						Registry: reg.RepoRef.PullPrefix,
+					}
+					authopts := dc.AuthConfiguration{
+						Username: reg.RepoRef.Username,
+						Password: reg.RepoRef.Password,
+					}
+					err := iw.DockerClient.PullImage(popts, authopts)
+					if err != nil {
+						fmt.Printf("Failed to pull %s:%s from %s, %v\n", tf.Target.Image, tag, reg.RepoRef.Url)
+						continue
+					}
+					matchedOne = true
+					if idx == 0 {
+						matchedBest = true
+					}
+					break
+				}
+				if matchedOne {
+					break
+				}
+			}
+			if !matchedOne || !matchedBest {
+				iw.UnsolvedReqs = true
+			}
+		}
+
+		// Flush the wake channel
+		hasEvents := true
+		for hasEvents {
+			select {
+			case _ = <-iw.WakeChannel:
+				continue
+			default:
+				hasEvents = false
+				break
+			}
+		}
+	}
+}
+
 func (iw *ImageSyncWorker) Run() {
 	doRecheck := true
 	for iw.Running {
@@ -114,197 +301,7 @@ func (iw *ImageSyncWorker) Run() {
 			}
 		}
 		doRecheck = false
-		iw.killRecheckTimer()
-		iw.UnsolvedReqs = false
-		fmt.Printf("ImageSyncWorker checking repositories...\n")
-
-		iw.ConfigLock.Lock()
-		if len(iw.Config.Repos) == 0 {
-			fmt.Printf("No repositories given in config.\n")
-			iw.ConfigLock.Unlock()
-			continue
-		}
-		iw.ConfigLock.Unlock()
-
-		// Load the current image list
-		liOpts := dc.ListImagesOptions{}
-		images, err := iw.DockerClient.ListImages(liOpts)
-		if err != nil {
-			fmt.Printf("Error fetching images list %v\n", err)
-			if iw.sleepShouldQuit(time.Duration(2 * time.Second)) {
-				return
-			}
-			continue
-		}
-
-		imageMap := utils.BuildImageMap(&images)
-
-		// For each target container grab the best tag available currently
-		// If the best tag is score 0 don't check it
-		// We only want to fetch better than the current best.
-		var imagesToFetch []*imageToFetch
-		iw.ConfigLock.Lock()
-		for _, ctr := range iw.Config.Containers {
-			image := &ctr.Image
-			availableTags := imageMap[*image]
-			bestAvailable := ""
-			var bestAvailableScore uint
-			bestAvailableScore = math.MaxUint16
-			for _, avail := range availableTags {
-				score := ctr.ContainerVersionScore(avail)
-				if score < bestAvailableScore {
-					bestAvailableScore = score
-					bestAvailable = avail
-				}
-			}
-			if bestAvailableScore == 0 || (len(ctr.Versions) == 0 && !ctr.UseAnyVersion) {
-				continue
-			}
-			// fetch anything from index 0 to bestAvailableScore (non inclusive)
-			var tagsToFetch []string
-			if bestAvailable == "" {
-				tagsToFetch = ctr.Versions
-			} else {
-				tagsToFetch = ctr.Versions[:bestAvailableScore]
-			}
-			fmt.Printf("We need to fetch images for %s\n", *image)
-			fmt.Printf("Best available: %s score: %d\n", bestAvailable, bestAvailableScore)
-			fmt.Printf("Versions to fetch: %v\n", tagsToFetch)
-			if ctr.UseAnyVersion {
-				fmt.Printf("... but we will settle for any version.\n")
-			}
-			toFetch := new(imageToFetch)
-			toFetch.FetchAny = ctr.UseAnyVersion
-			toFetch.NeededTags = tagsToFetch
-			toFetch.Target = ctr
-			toFetch.AvailableAt = make(map[string][]availableDownloadRepository)
-			imagesToFetch = append(imagesToFetch, toFetch)
-		}
-
-		if len(imagesToFetch) == 0 {
-			iw.ConfigLock.Unlock()
-			continue
-		}
-
-		fmt.Printf("Preparing to fetch %d repos...\n", len(imagesToFetch))
-
-		// Build registry client
-		// Rebuild the registry list
-		for _, rege := range iw.Config.Repos {
-			urlParsed, err := url.Parse(rege.Url)
-			if err != nil {
-				fmt.Printf("Unable to parse url %s, %v\n", rege.Url, err)
-				continue
-			}
-			var insecureRegs []string
-			if rege.Insecure {
-				insecureRegs = []string{urlParsed.Host}
-			}
-			service := registry.NewService(registry.ServiceOptions{InsecureRegistries: insecureRegs})
-			for _, tf := range imagesToFetch {
-				image := tf.Target.Image
-				imagePts := strings.Split(image, "/")
-				if len(imagePts) == 1 {
-					image = strings.Join([]string{"library", image}, "/")
-					tf.Target.Image = image
-				}
-				ref, err := reference.ParseNamed(image)
-				if err != nil {
-					fmt.Printf("Error parsing reference %s, %v.\n", image, err)
-					continue
-				}
-				info, err := registry.ParseRepositoryInfo(ref)
-				if err != nil {
-					fmt.Printf("Error parsing repository info %s, %v.\n", image, err)
-					continue
-				}
-				endpoints, err := service.LookupPullEndpoints(urlParsed.Host)
-				if err != nil {
-					fmt.Printf("Error parsing endpoints %s, %v.\n", rege.Url, err)
-					continue
-				}
-				metaHeaders := rege.MetaHeaders
-				authConfig := &types.AuthConfig{Username: rege.Username, Password: rege.Password}
-				successfullyConnected := false
-				// var endpoint registry.APIEndpoint
-				var reg distribution.Repository
-				for _, endp := range endpoints {
-					reg, _, err = ddistro.NewV2Repository(iw.RegistryContext, info, endp, metaHeaders, authConfig, "pull")
-					if err != nil {
-						fmt.Printf("Error connecting to '%s', %v\n", rege.Url, err)
-						continue
-					}
-					successfullyConnected = true
-					break
-				}
-				if !successfullyConnected {
-					fmt.Printf("Unable to connect successfully to %s.\n", rege.Url)
-					continue
-				}
-				// tags is the tag service
-				tags, err := reg.Tags(iw.RegistryContext).All(iw.RegistryContext)
-				if err != nil {
-					fmt.Printf("Error checking '%s' for %s, %v\n", rege.Url, image, err)
-					continue
-				}
-				fmt.Printf("From %s, %s is available with %d tags.\n", rege.Url, image, len(tags))
-				for _, tag := range tags {
-					tf.AvailableAt[tag] = append(tf.AvailableAt[tag], availableDownloadRepository{
-						Repo:    &reg,
-						RepoRef: &rege,
-					})
-				}
-			}
-			iw.ConfigLock.Unlock()
-
-			for _, tf := range imagesToFetch {
-				matchedOne := false
-				matchedBest := false
-				for idx, tag := range tf.NeededTags {
-					for _, reg := range tf.AvailableAt[tag] {
-						fmt.Printf("%s:%s available from %s, pulling...\n", tf.Target.Image, tag, reg.RepoRef.Url)
-						popts := dc.PullImageOptions{
-							Repository: tf.Target.Image,
-							Tag:        tag,
-							// OutputStream: os.Stdout,
-							Registry: reg.RepoRef.PullPrefix,
-						}
-						authopts := dc.AuthConfiguration{
-							Username: reg.RepoRef.Username,
-							Password: reg.RepoRef.Password,
-						}
-						err := iw.DockerClient.PullImage(popts, authopts)
-						if err != nil {
-							fmt.Printf("Failed to pull %s:%s from %s, %v\n", tf.Target.Image, tag, reg.RepoRef.Url)
-							continue
-						}
-						matchedOne = true
-						if idx == 0 {
-							matchedBest = true
-						}
-						break
-					}
-					if matchedOne {
-						break
-					}
-				}
-				if !matchedOne || !matchedBest {
-					iw.UnsolvedReqs = true
-				}
-			}
-
-			// Flush the wake channel
-			hasEvents := true
-			for hasEvents {
-				select {
-				case _ = <-iw.WakeChannel:
-					continue
-				default:
-					hasEvents = false
-					break
-				}
-			}
-		}
+		iw.processOnce()
 	}
 	fmt.Printf("ImageSyncWorker exiting...\n")
 }
