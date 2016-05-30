@@ -13,6 +13,7 @@ import (
 	"github.com/synrobo/deviced/pkg/config"
 	"github.com/synrobo/deviced/pkg/containersync"
 	"github.com/synrobo/deviced/pkg/imagesync"
+	"github.com/synrobo/deviced/pkg/reflection"
 	"github.com/synrobo/deviced/pkg/state"
 )
 
@@ -29,6 +30,7 @@ type System struct {
 
 	ContainerWorker *containersync.ContainerSyncWorker
 	ImageWorker     *imagesync.ImageSyncWorker
+	Reflection      *reflection.DevicedReflection
 }
 
 func (s *System) initHomeDir() int {
@@ -66,20 +68,36 @@ func (s *System) initWorkers() int {
 		return 1
 	}
 
-	iw := new(imagesync.ImageSyncWorker)
-	iw.ConfigLock = &s.ConfigLock
-	iw.DockerClient = s.DockerClient
-	iw.Config = &s.Config
-	iw.Init()
-	s.ImageWorker = iw
+	err = s.DockerClient.Ping()
+	if err != nil {
+		fmt.Printf("Unable to ping Docker, %v\n", err)
+		return 1
+	}
 
-	s.ContainerWorker = new(containersync.ContainerSyncWorker)
-	cw := s.ContainerWorker
-	cw.ConfigLock = &s.ConfigLock
-	cw.DockerClient = s.DockerClient
-	cw.Config = &s.Config
-	cw.State = &s.State.ContainerWorkerState
-	if err = cw.Init(); err != nil {
+	refl, err := reflection.BuildReflection(s.DockerClient)
+	if err != nil || refl == nil {
+		fmt.Printf("Unable to locate our container, continuing without reflection.\n")
+		fmt.Printf("Error locating container was: %v\n", err)
+	} else {
+		fmt.Printf("Located our container, continuing with reflection.\n")
+		s.Reflection = refl
+	}
+
+	s.ImageWorker = &imagesync.ImageSyncWorker{
+		ConfigLock:   &s.ConfigLock,
+		DockerClient: s.DockerClient,
+		Config:       &s.Config,
+	}
+	s.ImageWorker.Init()
+
+	s.ContainerWorker = &containersync.ContainerSyncWorker{
+		ConfigLock:   &s.ConfigLock,
+		DockerClient: s.DockerClient,
+		Config:       &s.Config,
+		State:        &s.State.ContainerWorkerState,
+		Reflection:   s.Reflection,
+	}
+	if err = s.ContainerWorker.Init(); err != nil {
 		fmt.Printf("Error initializing ContainerWorker, %v\n", err)
 		return 1
 	}

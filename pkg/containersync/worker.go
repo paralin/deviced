@@ -8,6 +8,7 @@ import (
 
 	dc "github.com/fsouza/go-dockerclient"
 	"github.com/synrobo/deviced/pkg/config"
+	"github.com/synrobo/deviced/pkg/reflection"
 	"github.com/synrobo/deviced/pkg/state"
 	"github.com/synrobo/deviced/pkg/utils"
 )
@@ -32,6 +33,7 @@ type ContainerSyncWorker struct {
 	State        *state.ContainerWorkerState
 	ConfigLock   *sync.Mutex
 	DockerClient *dc.Client
+	Reflection   *reflection.DevicedReflection
 
 	Running             bool
 	EventsChannel       chan *dc.APIEvents
@@ -98,7 +100,7 @@ func (cw *ContainerSyncWorker) Run() {
 
 		if !cw.Config.ContainerConfig.ManageAllContainers {
 			listOpts.Filters = map[string][]string{}
-			listOpts.Filters["managedby"] = []string{"deviced"}
+			listOpts.Filters["label"] = []string{"deviced_id"}
 		}
 
 		containers, err := cw.DockerClient.ListContainers(listOpts)
@@ -227,7 +229,7 @@ func (cw *ContainerSyncWorker) Run() {
 			if tctr.Options.Config.Labels == nil {
 				tctr.Options.Config.Labels = make(map[string]string)
 			}
-			tctr.Options.Config.Labels["mangedby"] = "deviced"
+			tctr.Options.Config.Labels["deviced_id"] = tctr.Id
 			tctr.Options.Config.Image = strings.Join([]string{selectedCtr.Image, selectedCtr.ImageTag}, ":")
 			containersToCreate = append(containersToCreate, tctr.Options)
 			devicedIdToContainer[tctr.Id] = selectedCtr
@@ -238,7 +240,13 @@ func (cw *ContainerSyncWorker) Run() {
 		cw.ConfigLock.Unlock()
 
 		// We have picked the containers to keep. Delete the others.
+		deleteSelf := false
 		for _, cid := range containersToDelete {
+			if cw.Reflection != nil && cw.Reflection.Container.ID == cid {
+				deleteSelf = true
+				fmt.Printf("Queuing deletion of ourselves...\n")
+				continue
+			}
 			opts := dc.RemoveContainerOptions{ID: cid, Force: true}
 			if err := cw.DockerClient.RemoveContainer(opts); err != nil {
 				fmt.Printf("Error attempting to remove container, %v\n", err)
@@ -258,6 +266,15 @@ func (cw *ContainerSyncWorker) Run() {
 			}
 		}
 		containersToCreate = nil
+
+		if deleteSelf {
+			fmt.Printf("Deleting our own container...\n")
+			cid := cw.Reflection.Container.ID
+			opts := dc.RemoveContainerOptions{ID: cid, Force: true}
+			if err := cw.DockerClient.RemoveContainer(opts); err != nil {
+				fmt.Printf("Error attempting to delete ourselves, %v\n", err)
+			}
+		}
 
 		cw.StateChangedChannel <- true
 

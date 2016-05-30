@@ -24,3 +24,16 @@ This is the process:
   - Loop checks list of images, target list of containers, identifies images that are needed, queries registries...
   - If this loop identifies that no changes need to be made it will exit.
   - The loop can be started again on a configuration reload event.
+
+Restarting Itself
+=================
+
+What happens if deviced is running in a container, and it needs to replace itself?
+
+A few protections are in place:
+
+ - Deviced will never delete itself without a replace operation
+ - When replacing itself it will create a new container first, start it, THEN delete itself.
+ - Any update operations are done AFTER all other operations are complete.
+ - Deviced will look itself up in the container list as a startup procedure, to mirror all the startup options it had before.
+ - mergo is used to merge the old config with the new one, unless `devicedIgnoreOldOptions` is set

@@ -31,4 +31,5 @@ func (tc *TargetContainer) ContainerVersionScore(version string) uint {
 type ContainerWorkerConfig struct {
 	// If true, manage everything automatically
 	ManageAllContainers bool "manageAllContainers"
+	AllowSelfDelete     bool "allowSelfDelete"
 }
