@@ -23,6 +23,7 @@ import (
 type ImageSyncWorker struct {
 	Config       *config.DevicedConfig
 	ConfigLock   *sync.Mutex
+	WorkerLock   *sync.Mutex
 	DockerClient *dc.Client
 
 	Running      bool
@@ -234,8 +235,12 @@ func (iw *ImageSyncWorker) processOnce() {
 			for idx, tag := range tf.NeededTags {
 				for _, reg := range tf.AvailableAt[tag] {
 					fmt.Printf("%s:%s available from %s, pulling...\n", tf.Target.Image, tag, reg.RepoRef.Url)
+					imageWithPrefix := tf.Target.Image
+					if reg.RepoRef.PullPrefix != "" {
+						imageWithPrefix = strings.Join([]string{reg.RepoRef.PullPrefix, tf.Target.Image}, "/")
+					}
 					popts := dc.PullImageOptions{
-						Repository: tf.Target.Image,
+						Repository: imageWithPrefix,
 						Tag:        tag,
 						// OutputStream: os.Stdout,
 						Registry: reg.RepoRef.PullPrefix,
@@ -246,8 +251,21 @@ func (iw *ImageSyncWorker) processOnce() {
 					}
 					err := iw.DockerClient.PullImage(popts, authopts)
 					if err != nil {
-						fmt.Printf("Failed to pull %s:%s from %s, %v\n", tf.Target.Image, tag, reg.RepoRef.Url)
+						fmt.Printf("Failed to pull %s:%s from %s, %v\n", tf.Target.Image, tag, reg.RepoRef.Url, err)
 						continue
+					}
+					if reg.RepoRef.PullPrefix != "" {
+						tagopts := dc.TagImageOptions{
+							Repo:  tf.Target.Image,
+							Tag:   tag,
+							Force: true,
+						}
+						imageWithPrefixAndTag := strings.Join([]string{imageWithPrefix, tag}, ":")
+						err = iw.DockerClient.TagImage(imageWithPrefixAndTag, tagopts)
+						if err != nil {
+							fmt.Printf("Failed to tag %s as %s:%s, %v\n", imageWithPrefixAndTag, tf.Target.Image, tag, err)
+							continue
+						}
 					}
 					matchedOne = true
 					if idx == 0 {

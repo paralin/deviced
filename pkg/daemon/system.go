@@ -24,6 +24,7 @@ type System struct {
 
 	Config        config.DevicedConfig
 	ConfigLock    sync.Mutex
+	WorkerLock    sync.Mutex
 	ConfigWatcher *config.DevicedConfigWatcher
 	State         state.DevicedState
 	DockerClient  *dc.Client
@@ -85,6 +86,7 @@ func (s *System) initWorkers() int {
 
 	s.ImageWorker = &imagesync.ImageSyncWorker{
 		ConfigLock:   &s.ConfigLock,
+		WorkerLock:   &s.WorkerLock,
 		DockerClient: s.DockerClient,
 		Config:       &s.Config,
 	}
@@ -92,6 +94,7 @@ func (s *System) initWorkers() int {
 
 	s.ContainerWorker = &containersync.ContainerSyncWorker{
 		ConfigLock:   &s.ConfigLock,
+		WorkerLock:   &s.WorkerLock,
 		DockerClient: s.DockerClient,
 		Config:       &s.Config,
 		State:        &s.State.ContainerWorkerState,
