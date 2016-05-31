@@ -13,10 +13,12 @@ type TargetContainer struct {
 	// [namespace/]name no version
 	Image string "image"
 	// acceptable version tags, in order of priority
-	Versions      []string                  "versions"
-	UseAnyVersion bool                      "useAnyVersion,omitempty"
-	RestartExited bool                      "restartExited"
-	Options       dc.CreateContainerOptions "containerOptions,omitempty"
+	Versions               []string            "versions"
+	UseAnyVersion          bool                "useAnyVersion,omitempty"
+	RestartExited          bool                "restartExited"
+	DockerConfig           dc.Config           "dockerConfig,omitempty"
+	DockerHostConfig       dc.HostConfig       "dockerHostConfig,omitempty"
+	DockerNetworkingConfig dc.NetworkingConfig "dockerNetworkingConfig,omitempty"
 }
 
 func (tc *TargetContainer) ContainerVersionScore(version string) uint {

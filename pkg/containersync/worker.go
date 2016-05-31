@@ -2,6 +2,8 @@ package containersync
 
 import (
 	"fmt"
+	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,26 +32,23 @@ Waking the worker can be done by sending
 */
 type ContainerSyncWorker struct {
 	Config       *config.DevicedConfig
-	State        *state.ContainerWorkerState
 	ConfigLock   *sync.Mutex
 	WorkerLock   *sync.Mutex
 	DockerClient *dc.Client
 	Reflection   *reflection.DevicedReflection
 
-	Running             bool
-	EventsChannel       chan *dc.APIEvents
-	WakeChannel         chan bool
-	QuitChannel         chan bool
-	StateChangedChannel chan bool
+	Running       bool
+	EventsChannel chan *dc.APIEvents
+	WakeChannel   chan bool
+	QuitChannel   chan bool
 }
 
 // Init the worker
 func (cw *ContainerSyncWorker) Init() error {
 	cw.Running = true
 	cw.EventsChannel = make(chan *dc.APIEvents, 50)
-	cw.WakeChannel = make(chan bool, 1)
-	cw.QuitChannel = make(chan bool, 1)
-	cw.StateChangedChannel = make(chan bool, 1)
+	cw.WakeChannel = make(chan bool, 5)
+	cw.QuitChannel = make(chan bool, 5)
 	fmt.Printf("Registering event listeners...\n")
 	if err := cw.DockerClient.AddEventListener(cw.EventsChannel); err != nil {
 		return err
@@ -120,10 +119,10 @@ func (cw *ContainerSyncWorker) processOnce() {
 	tctrs := &cw.Config.Containers
 
 	// Sync containers to running containers list.
-	devicedIdToContainer := make(map[string]*state.RunningContainer)
+	devicedIdToContainer := make(map[string]state.RunningContainer)
 	containersToDelete := make(map[string]bool)
 	containersToStart := make(map[string]bool)
-	containersToCreate := []dc.CreateContainerOptions{}
+	containersToCreate := []*dc.CreateContainerOptions{}
 	for _, ctr := range containers {
 		fmt.Printf("Container name: %s tag: %s\n", ctr.Names[0], ctr.Image)
 		image, imageTag := utils.ParseImageAndTag(ctr.Image)
@@ -161,7 +160,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 			thisScore := matchingTarget.ContainerVersionScore(imageTag)
 			if thisScore < otherScore {
 				fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", ctr.ID, imageTag, val.ApiContainer.ID, oimageTag)
-				devicedIdToContainer[matchingTarget.Id] = runningContainer
+				devicedIdToContainer[matchingTarget.Id] = *runningContainer
 				containersToDelete[val.ApiContainer.ID] = true
 				containersToStart[ctr.ID] = true
 			} else {
@@ -170,14 +169,15 @@ func (cw *ContainerSyncWorker) processOnce() {
 				containersToStart[val.ApiContainer.ID] = true
 			}
 		} else {
-			devicedIdToContainer[matchingTarget.Id] = runningContainer
+			devicedIdToContainer[matchingTarget.Id] = *runningContainer
 		}
 	}
 
 	// Decide if there's a better image for each target
 	for _, tctr := range cw.Config.Containers {
-		currentCtr := devicedIdToContainer[tctr.Id]
-		if currentCtr != nil && currentCtr.Score == 0 {
+		currentCtr, ok := devicedIdToContainer[tctr.Id]
+		okn := false
+		if ok && currentCtr.Score == 0 {
 			continue
 		}
 		images := availableTagMap[tctr.Image]
@@ -194,45 +194,48 @@ func (cw *ContainerSyncWorker) processOnce() {
 			if !tctr.UseAnyVersion && score > 1000 {
 				continue
 			}
-			if currentCtr != nil && avail == currentCtr.ImageTag {
+			if ok && avail == currentCtr.ImageTag {
 				continue
 			}
-			if currentCtr != nil && currentCtr.Score < score {
+			if ok && currentCtr.Score < score {
 				continue
 			}
-			selectedCtr = new(state.RunningContainer)
-			selectedCtr.DevicedID = tctr.Id
-			selectedCtr.Image = tctr.Image
-			selectedCtr.ImageTag = avail
-			selectedCtr.Score = score
-			selectedCtr.ApiContainer = nil
+			selectedCtr = state.RunningContainer{
+				DevicedID:    tctr.Id,
+				Image:        tctr.Image,
+				ImageTag:     avail,
+				Score:        score,
+				ApiContainer: nil,
+			}
+			okn = true
 		}
-		if selectedCtr == nil {
+		if !ok && !okn {
 			fmt.Printf("Container %s has no suitable image, skipping.\n", tctr.Image)
 			continue
 		}
-		if currentCtr == selectedCtr {
+		if ok && currentCtr == selectedCtr {
 			fmt.Printf("Container %s has no better image than the current, skipping.\n", tctr.Image)
 			continue
 		}
-		if currentCtr != nil && selectedCtr != currentCtr {
+		if ok && selectedCtr != currentCtr {
 			fmt.Printf("Replacing container %s:%s with new container at %s:%s\n", currentCtr.Image, currentCtr.ImageTag, selectedCtr.Image, selectedCtr.ImageTag)
 			containersToDelete[currentCtr.ApiContainer.ID] = true
 		}
 		fmt.Printf("Starting container %s:%s...\n", selectedCtr.Image, selectedCtr.ImageTag)
-		tctr.Options.Name = strings.Join([]string{"deviced", tctr.Id}, "_")
-		if tctr.Options.Config == nil {
-			tctr.Options.Config = new(dc.Config)
+		opts := &dc.CreateContainerOptions{
+			Name:             strings.Join([]string{"devd", tctr.Id, strconv.Itoa(rand.Int() % 100)}, "_"),
+			Config:           &tctr.DockerConfig,
+			HostConfig:       &tctr.DockerHostConfig,
+			NetworkingConfig: &tctr.DockerNetworkingConfig,
 		}
-		if tctr.Options.Config.Labels == nil {
-			tctr.Options.Config.Labels = make(map[string]string)
+		if opts.Config.Labels == nil {
+			opts.Config.Labels = make(map[string]string)
 		}
-		tctr.Options.Config.Labels["deviced.id"] = tctr.Id
-		tctr.Options.Config.Image = strings.Join([]string{selectedCtr.Image, selectedCtr.ImageTag}, ":")
-		containersToCreate = append(containersToCreate, tctr.Options)
+		opts.Config.Labels["deviced.id"] = tctr.Id
+		opts.Config.Image = strings.Join([]string{selectedCtr.Image, selectedCtr.ImageTag}, ":")
+		containersToCreate = append(containersToCreate, opts)
 		devicedIdToContainer[tctr.Id] = selectedCtr
 	}
-	cw.State.RunningContainers = devicedIdToContainer
 
 	// We have picked the containers to keep. Delete the others.
 	for cid, _ := range containersToDelete {
@@ -250,7 +253,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 	}
 
 	for _, ctr := range containersToCreate {
-		created, err := cw.DockerClient.CreateContainer(ctr)
+		created, err := cw.DockerClient.CreateContainer(*ctr)
 		if err != nil {
 			fmt.Printf("Container creation error: %v\n", err)
 			continue
@@ -267,8 +270,6 @@ func (cw *ContainerSyncWorker) processOnce() {
 		}
 	}
 	containersToStart = nil
-
-	cw.StateChangedChannel <- true
 }
 
 func (cw *ContainerSyncWorker) Run() {
@@ -277,8 +278,6 @@ func (cw *ContainerSyncWorker) Run() {
 		for hasEvents {
 			select {
 			case _ = <-cw.WakeChannel:
-				continue
-			case _ = <-cw.StateChangedChannel:
 				continue
 			default:
 				hasEvents = false
@@ -300,12 +299,6 @@ func (cw *ContainerSyncWorker) Run() {
 			}
 		}
 
-		eventsToListen := map[string]bool{
-			"pull":   true,
-			"tag":    true,
-			"import": true,
-		}
-
 		fmt.Printf("ContainerSyncWorker sleeping...\n")
 		doRecheck := false
 		for !doRecheck {
@@ -322,19 +315,10 @@ func (cw *ContainerSyncWorker) Run() {
 				// - tag
 				// - import
 			case event := <-cw.EventsChannel:
+				fmt.Printf("Docker event type triggered: %s\n", event.Type)
 				// use continue to ignore event
-				// fmt.Printf("ContainerSyncWorker processing event, %s\n", event)
-				if event.Type == "image" && eventsToListen[event.Action] {
-					// Check the actor
-					cw.ConfigLock.Lock()
-					// If the image is in our list of targets...
-					for _, tgt := range cw.Config.Containers {
-						if event.Actor.Attributes["name"] == tgt.Image {
-							doRecheck = true
-							break
-						}
-					}
-					cw.ConfigLock.Unlock()
+				if event.Type == "image" {
+					doRecheck = true
 				}
 				break
 			}

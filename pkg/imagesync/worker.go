@@ -26,11 +26,12 @@ type ImageSyncWorker struct {
 	WorkerLock   *sync.Mutex
 	DockerClient *dc.Client
 
-	Running      bool
-	WakeChannel  chan bool
-	QuitChannel  chan bool
-	RecheckTimer *time.Timer
-	UnsolvedReqs bool
+	Running              bool
+	WakeChannel          chan bool
+	QuitChannel          chan bool
+	WakeContainerChannel *chan bool
+	RecheckTimer         *time.Timer
+	UnsolvedReqs         bool
 
 	RegistryContext context.Context
 }
@@ -95,10 +96,13 @@ type availableDownloadRepository struct {
 func (iw *ImageSyncWorker) processOnce() {
 	iw.killRecheckTimer()
 	iw.UnsolvedReqs = false
-	fmt.Printf("ImageSyncWorker checking repositories...\n")
 	iw.ConfigLock.Lock()
-	repoLen := len(iw.Config.Repos)
 	defer iw.ConfigLock.Unlock()
+	iw.WorkerLock.Lock()
+	defer iw.WorkerLock.Unlock()
+	shouldTriggerContainerCheck := false
+	fmt.Printf("ImageSyncWorker checking repositories...\n")
+	repoLen := len(iw.Config.Repos)
 	if repoLen == 0 {
 		fmt.Printf("No repositories given in config.\n")
 		return
@@ -266,6 +270,8 @@ func (iw *ImageSyncWorker) processOnce() {
 							fmt.Printf("Failed to tag %s as %s:%s, %v\n", imageWithPrefixAndTag, tf.Target.Image, tag, err)
 							continue
 						}
+						shouldTriggerContainerCheck = true
+						fmt.Printf("tagged %s as %s:%s\n", imageWithPrefixAndTag, tf.Target.Image, tag)
 					}
 					matchedOne = true
 					if idx == 0 {
@@ -279,7 +285,13 @@ func (iw *ImageSyncWorker) processOnce() {
 			}
 			if !matchedOne || !matchedBest {
 				iw.UnsolvedReqs = true
+				fmt.Printf("%s: dependencies unsolved, will recheck later.\n", tf.Target.Image)
 			}
+		}
+
+		// trigger a wake
+		if shouldTriggerContainerCheck {
+			(*iw.WakeContainerChannel) <- true
 		}
 
 		// Flush the wake channel

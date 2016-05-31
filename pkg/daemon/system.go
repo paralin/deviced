@@ -14,19 +14,16 @@ import (
 	"github.com/synrobo/deviced/pkg/containersync"
 	"github.com/synrobo/deviced/pkg/imagesync"
 	"github.com/synrobo/deviced/pkg/reflection"
-	"github.com/synrobo/deviced/pkg/state"
 )
 
 type System struct {
 	HomeDir    string
 	ConfigPath string
-	StatePath  string
 
 	Config        config.DevicedConfig
 	ConfigLock    sync.Mutex
 	WorkerLock    sync.Mutex
 	ConfigWatcher *config.DevicedConfigWatcher
-	State         state.DevicedState
 	DockerClient  *dc.Client
 
 	ContainerWorker *containersync.ContainerSyncWorker
@@ -48,12 +45,6 @@ func (s *System) initHomeDir() int {
 	s.ConfigPath = filepath.Join(s.HomeDir, "config.yaml")
 	if !s.Config.CreateOrRead(s.ConfigPath) {
 		fmt.Printf("Failed to create/read config at %s", s.ConfigPath)
-		return 1
-	}
-
-	s.StatePath = filepath.Join(s.HomeDir, "state.yaml")
-	if !s.State.CreateOrRead(s.StatePath) {
-		fmt.Printf("Failed to create/read state at %s", s.StatePath)
 		return 1
 	}
 	return 0
@@ -84,26 +75,26 @@ func (s *System) initWorkers() int {
 		s.Reflection = refl
 	}
 
-	s.ImageWorker = &imagesync.ImageSyncWorker{
-		ConfigLock:   &s.ConfigLock,
-		WorkerLock:   &s.WorkerLock,
-		DockerClient: s.DockerClient,
-		Config:       &s.Config,
-	}
-	s.ImageWorker.Init()
-
 	s.ContainerWorker = &containersync.ContainerSyncWorker{
 		ConfigLock:   &s.ConfigLock,
 		WorkerLock:   &s.WorkerLock,
 		DockerClient: s.DockerClient,
 		Config:       &s.Config,
-		State:        &s.State.ContainerWorkerState,
 		Reflection:   s.Reflection,
 	}
 	if err = s.ContainerWorker.Init(); err != nil {
 		fmt.Printf("Error initializing ContainerWorker, %v\n", err)
 		return 1
 	}
+
+	s.ImageWorker = &imagesync.ImageSyncWorker{
+		ConfigLock:           &s.ConfigLock,
+		WorkerLock:           &s.WorkerLock,
+		DockerClient:         s.DockerClient,
+		Config:               &s.Config,
+		WakeContainerChannel: &s.ContainerWorker.WakeChannel,
+	}
+	s.ImageWorker.Init()
 
 	return 0
 }
@@ -120,8 +111,8 @@ func (s *System) initWatchers() int {
 // Wake the workers upon a config change
 func (s *System) wakeWorkers() {
 	fmt.Printf("Config changed, waking workers...\n")
-	s.ContainerWorker.WakeChannel <- true
 	s.ImageWorker.WakeChannel <- true
+	s.ContainerWorker.WakeChannel <- true
 }
 
 func (s *System) triggerConfRecheck() {
@@ -177,9 +168,6 @@ func (s *System) Main() int {
 				s.wakeWorkers()
 			}
 			s.initWatchers()
-			continue
-		case <-s.ContainerWorker.StateChangedChannel:
-			s.State.WriteState(s.StatePath)
 			continue
 		}
 	}
