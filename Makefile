@@ -11,5 +11,8 @@ build-static:
 docker: build-static
 	docker build --tag="synrobo/deviced:latest" .
 
+buildarm:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -v -a -o deviced
+
 clean:
 	-git clean -Xfd
