@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -17,7 +16,6 @@ import (
 )
 
 type System struct {
-	HomeDir    string
 	ConfigPath string
 
 	Config        config.DevicedConfig
@@ -31,18 +29,7 @@ type System struct {
 	Reflection      *reflection.DevicedReflection
 }
 
-func (s *System) initHomeDir() int {
-	fmt.Printf("Using home directory %s...\n", s.HomeDir)
-	// Check if home dir exists
-	if _, err := os.Stat(s.HomeDir); os.IsNotExist(err) {
-		fmt.Printf("Creating config directory %s...\n", s.HomeDir)
-		if err := os.MkdirAll(s.HomeDir, 0777); err != nil {
-			fmt.Printf("Unable to create config dir %s, error %s.\n", s.HomeDir, err)
-			return 1
-		}
-	}
-
-	s.ConfigPath = filepath.Join(s.HomeDir, "config.yaml")
+func (s *System) initConfig() int {
 	if !s.Config.CreateOrRead(s.ConfigPath) {
 		fmt.Printf("Failed to create/read config at %s", s.ConfigPath)
 		return 1
@@ -130,7 +117,7 @@ func (s *System) closeWatchers() {
 }
 
 func (s *System) Main() int {
-	if res := s.initHomeDir(); res != 0 {
+	if res := s.initConfig(); res != 0 {
 		return res
 	}
 

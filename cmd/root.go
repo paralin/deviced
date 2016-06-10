@@ -9,7 +9,7 @@ import (
 	"github.com/synrobo/deviced/pkg/daemon"
 )
 
-var homeDir string
+var configPath string
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -19,7 +19,7 @@ var RootCmd = &cobra.Command{
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		s := daemon.System{HomeDir: homeDir}
+		s := daemon.System{ConfigPath: configPath}
 		os.Exit(s.Main())
 	},
 }
@@ -40,22 +40,21 @@ func init() {
 	// Cobra supports Persistent Flags, which, if defined here,
 	// will be global for your application.
 
-	RootCmd.PersistentFlags().StringVar(&homeDir, "home", "", "home dir (default is /etc/deviced)")
+	RootCmd.PersistentFlags().StringVar(&configPath, "config", "", "config path (default is /etc/deviced.yaml)")
 }
 
 func initConfig() {
-	if homeDir != "" {
-		homeDir = filepath.Clean(homeDir)
-		homeDirAbs, err := filepath.Abs(homeDir)
+	if configPath != "" {
+		configPathAbs, err := filepath.Abs(configPath)
 		if err != nil {
-			fmt.Errorf("Unable to format %s to absolute path, %s, using default path.\n", homeDir, err)
-			homeDir = ""
+			fmt.Errorf("Unable to format %s to absolute path, %s, using default path.\n", configPath, err)
+			configPath = ""
 		} else {
-			homeDir = homeDirAbs
+			configPath = configPathAbs
 		}
 	}
 
-	if homeDir == "" {
-		homeDir = "/etc/deviced"
+	if configPath == "" {
+		configPath = "/etc/deviced.yaml"
 	}
 }
