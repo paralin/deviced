@@ -12,8 +12,8 @@ type DevicedConfig struct {
 	ContainerConfig ContainerWorkerConfig "containerConfig"
 	ImageConfig     ImageWorkerConfig     "imageConfig"
 	DockerConfig    DockerClientConfig    "dockerConfig"
-	Repos           []RemoteRepository    "repos"
-	Containers      []TargetContainer     "containers"
+	Repos           []*RemoteRepository   "repos"
+	Containers      []*TargetContainer    "containers"
 }
 
 func configFileExists(path string) bool {

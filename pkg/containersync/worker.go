@@ -115,14 +115,11 @@ func (cw *ContainerSyncWorker) processOnce() {
 
 	availableTagMap := utils.BuildImageMap(&images)
 
-	// Convenience
-	tctrs := &cw.Config.Containers
-
 	// Sync containers to running containers list.
 	devicedIdToContainer := make(map[string]state.RunningContainer)
 	containersToDelete := make(map[string]bool)
 	containersToStart := make(map[string]bool)
-	containersToCreate := []*dc.CreateContainerOptions{}
+	containersToCreate := []dc.CreateContainerOptions{}
 	for _, ctr := range containers {
 		fmt.Printf("Container name: %s tag: %s\n", ctr.Names[0], ctr.Image)
 		image, imageTag := utils.ParseImageAndTag(ctr.Image)
@@ -130,9 +127,9 @@ func (cw *ContainerSyncWorker) processOnce() {
 		// try to match the container to a target container
 		// match by image
 		var matchingTarget *config.TargetContainer
-		for _, tctr := range *tctrs {
+		for _, tctr := range cw.Config.Containers {
 			if strings.EqualFold(tctr.Image, image) {
-				matchingTarget = &tctr
+				matchingTarget = tctr
 				break
 			}
 		}
@@ -221,8 +218,8 @@ func (cw *ContainerSyncWorker) processOnce() {
 			fmt.Printf("Replacing container %s:%s with new container at %s:%s\n", currentCtr.Image, currentCtr.ImageTag, selectedCtr.Image, selectedCtr.ImageTag)
 			containersToDelete[currentCtr.ApiContainer.ID] = true
 		}
-		fmt.Printf("Starting container %s:%s...\n", selectedCtr.Image, selectedCtr.ImageTag)
-		opts := &dc.CreateContainerOptions{
+		fmt.Printf("Starting container (%s) %s:%s...\n", tctr.Id, selectedCtr.Image, selectedCtr.ImageTag)
+		opts := dc.CreateContainerOptions{
 			Name:             strings.Join([]string{"devd", tctr.Id, strconv.Itoa(rand.Int() % 100)}, "_"),
 			Config:           &tctr.DockerConfig,
 			HostConfig:       &tctr.DockerHostConfig,
@@ -253,7 +250,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 	}
 
 	for _, ctr := range containersToCreate {
-		created, err := cw.DockerClient.CreateContainer(*ctr)
+		created, err := cw.DockerClient.CreateContainer(ctr)
 		if err != nil {
 			fmt.Printf("Container creation error: %v\n", err)
 			continue
@@ -317,7 +314,7 @@ func (cw *ContainerSyncWorker) Run() {
 			case event := <-cw.EventsChannel:
 				fmt.Printf("Docker event type triggered: %s\n", event.Type)
 				// use continue to ignore event
-				if event.Type == "image" {
+				if event.Type == "image" || event.Type == "network" || event.Type == "container" {
 					doRecheck = true
 				}
 				break

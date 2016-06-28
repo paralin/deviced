@@ -154,7 +154,7 @@ func (iw *ImageSyncWorker) processOnce() {
 		toFetch := new(imageToFetch)
 		toFetch.FetchAny = ctr.UseAnyVersion
 		toFetch.NeededTags = tagsToFetch
-		toFetch.Target = ctr
+		toFetch.Target = *ctr
 		toFetch.AvailableAt = make(map[string][]availableDownloadRepository)
 		imagesToFetch = append(imagesToFetch, toFetch)
 	}
@@ -228,7 +228,7 @@ func (iw *ImageSyncWorker) processOnce() {
 			for _, tag := range tags {
 				tf.AvailableAt[tag] = append(tf.AvailableAt[tag], availableDownloadRepository{
 					Repo:    &reg,
-					RepoRef: &rege,
+					RepoRef: rege,
 				})
 			}
 		}
