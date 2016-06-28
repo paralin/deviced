@@ -77,12 +77,62 @@ func buildRunningContainer(ctr *dc.APIContainers, mt *config.TargetContainer, sc
 	return nrc
 }
 
+func (cw *ContainerSyncWorker) processNetworks() map[string]dc.Network {
+	// Build map of current networks
+	netMap := make(map[string]dc.Network)
+
+	/*
+		Can't do this, what if we have a container that wants for example "bridge"?
+		if len(cw.Config.Networks) == 0 {
+			return netMap
+		}
+	*/
+
+	fmt.Printf("ContainerSyncWorker checking networks...\n")
+
+	// Load the current network list
+	list, err := cw.DockerClient.ListNetworks()
+	if err != nil {
+		fmt.Printf("Unable to sync networks, error: %v\n", err)
+		return nil
+	}
+
+	for _, net := range list {
+		netMap[net.Name] = net
+	}
+
+	// Copy the target net list
+	targetNetworks := cw.Config.Networks
+	for _, net := range targetNetworks {
+		if net.Name == "" {
+			fmt.Printf("Warning: invalid network definition in config with empty name.\n")
+			continue
+		}
+		if _, ok := netMap[net.Name]; ok {
+			continue
+		}
+
+		fmt.Printf("Attempting to create network %s...\n", net.Name)
+		cnet, err := cw.DockerClient.CreateNetwork(*net)
+		if err != nil {
+			fmt.Printf("Error creating network %s, %v!\n", net.Name, err)
+			continue
+		}
+		fmt.Printf("Created network %s succesfully.\n", net.Name)
+		netMap[net.Name] = *cnet
+	}
+
+	return netMap
+}
+
 func (cw *ContainerSyncWorker) processOnce() {
 	// Lock config
 	cw.ConfigLock.Lock()
 	defer cw.ConfigLock.Unlock()
 	cw.WorkerLock.Lock()
 	defer cw.WorkerLock.Unlock()
+
+	netMap := cw.processNetworks()
 
 	fmt.Printf("ContainerSyncWorker checking containers...\n")
 
@@ -250,6 +300,12 @@ func (cw *ContainerSyncWorker) processOnce() {
 	}
 
 	for _, ctr := range containersToCreate {
+		if ctr.HostConfig.NetworkMode != "" {
+			if _, ok := netMap[ctr.HostConfig.NetworkMode]; !ok {
+				fmt.Printf("Cannot find network %s in available networks. Skipping creation of %s.\n", ctr.HostConfig.NetworkMode, ctr.Name)
+				continue
+			}
+		}
 		created, err := cw.DockerClient.CreateContainer(ctr)
 		if err != nil {
 			fmt.Printf("Container creation error: %v\n", err)

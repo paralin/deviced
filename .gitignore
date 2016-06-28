@@ -26,3 +26,4 @@ _testmain.go
 glide.lock
 vendor/
 deviced
+deviced.yaml
