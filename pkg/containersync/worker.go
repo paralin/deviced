@@ -15,6 +15,8 @@ import (
 	"github.com/synrobo/deviced/pkg/utils"
 )
 
+const deviced_id_label string = "deviced.id"
+
 /* Container Sync Worker
 This worker periodically compares the list of
 target containers, the list of running containers,
@@ -68,11 +70,11 @@ func (cw *ContainerSyncWorker) sleepShouldQuit(t time.Duration) bool {
 	}
 }
 
-func buildRunningContainer(ctr *dc.APIContainers, mt *config.TargetContainer, score uint) *state.RunningContainer {
+func buildRunningContainer(ctr dc.APIContainers, mt *config.TargetContainer, score uint) *state.RunningContainer {
 	nrc := new(state.RunningContainer)
 	nrc.DevicedID = mt.Id
 	nrc.Image, nrc.ImageTag = utils.ParseImageAndTag(ctr.Image)
-	nrc.ApiContainer = ctr
+	nrc.ApiContainer = &ctr
 	nrc.Score = score
 	return nrc
 }
@@ -142,10 +144,8 @@ func (cw *ContainerSyncWorker) processOnce() {
 		Size: false,
 	}
 
-	if !cw.Config.ContainerConfig.ManageAllContainers {
-		listOpts.Filters = map[string][]string{}
-		listOpts.Filters["label"] = []string{"deviced.id"}
-	}
+	listOpts.Filters = map[string][]string{}
+	listOpts.Filters["label"] = []string{deviced_id_label}
 
 	containers, err := cw.DockerClient.ListContainers(listOpts)
 	if err != nil {
@@ -172,13 +172,13 @@ func (cw *ContainerSyncWorker) processOnce() {
 	containersToCreate := []dc.CreateContainerOptions{}
 	for _, ctr := range containers {
 		fmt.Printf("Container name: %s tag: %s\n", ctr.Names[0], ctr.Image)
-		image, imageTag := utils.ParseImageAndTag(ctr.Image)
+		_, imageTag := utils.ParseImageAndTag(ctr.Image)
 
 		// try to match the container to a target container
-		// match by image
+		// match by tag
 		var matchingTarget *config.TargetContainer
 		for _, tctr := range cw.Config.Containers {
-			if strings.EqualFold(tctr.Image, image) {
+			if strings.EqualFold(tctr.Id, ctr.Labels[deviced_id_label]) {
 				matchingTarget = tctr
 				break
 			}
@@ -196,7 +196,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 			continue
 		}
 
-		runningContainer := buildRunningContainer(&ctr, matchingTarget, matchingTarget.ContainerVersionScore(imageTag))
+		runningContainer := buildRunningContainer(ctr, matchingTarget, matchingTarget.ContainerVersionScore(imageTag))
 
 		if val, ok := devicedIdToContainer[matchingTarget.Id]; ok {
 			// We have an existing container that satisfies this target
@@ -371,7 +371,9 @@ func (cw *ContainerSyncWorker) Run() {
 				fmt.Printf("Docker event type triggered: %s\n", event.Type)
 				// use continue to ignore event
 				if event.Type == "image" || event.Type == "network" || event.Type == "container" {
+					fmt.Printf("Rechecking in %d seconds due to %s event.\n", 1, event.Type)
 					doRecheck = true
+					time.Sleep(1 * time.Second)
 				}
 				break
 			}
