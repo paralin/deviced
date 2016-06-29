@@ -1,4 +1,4 @@
-FROM armbuild/alpine:3.3
+FROM container4armhf/armhf-alpine:edge
 RUN apk --update add ca-certificates
 ADD deviced /
 ENTRYPOINT ["/deviced"]
