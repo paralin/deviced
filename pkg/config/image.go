@@ -3,7 +3,7 @@ package config
 import "fmt"
 
 type ImageWorkerConfig struct {
-	RecheckPeriod int `json:"recheckPeriod"`
+	RecheckPeriod int `yaml:"recheckPeriod"`
 }
 
 func (c *ImageWorkerConfig) FillWithDefaults() {

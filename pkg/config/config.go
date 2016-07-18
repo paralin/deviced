@@ -10,12 +10,12 @@ import (
 )
 
 type DevicedConfig struct {
-	ContainerConfig ContainerWorkerConfig      `json:"containerConfig"`
-	ImageConfig     ImageWorkerConfig          `json:"imageConfig"`
-	DockerConfig    DockerClientConfig         `json:"dockerConfig"`
-	Repos           []*RemoteRepository        `json:"repos"`
-	Containers      []*TargetContainer         `json:"containers"`
-	Networks        []*dc.CreateNetworkOptions `json:"networks"`
+	ContainerConfig ContainerWorkerConfig      `yaml:"containerConfig"`
+	ImageConfig     ImageWorkerConfig          `yaml:"imageConfig"`
+	DockerConfig    DockerClientConfig         `yaml:"dockerConfig"`
+	Repos           []*RemoteRepository        `yaml:"repos"`
+	Containers      []*TargetContainer         `yaml:"containers"`
+	Networks        []*dc.CreateNetworkOptions `yaml:"networks"`
 }
 
 func ConfigFileExists(path string) bool {

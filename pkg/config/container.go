@@ -9,16 +9,16 @@ import (
 
 type TargetContainer struct {
 	// unique ID
-	Id string `json:"id"`
+	Id string `yaml:"id"`
 	// [namespace/]name no version
-	Image string `json:"image"`
+	Image string `yaml:"image"`
 	// acceptable version tags, in order of priority
-	Versions               []string            `json:"versions"`
-	UseAnyVersion          bool                `json:"useAnyVersion,omitempty"`
-	RestartExited          bool                `json:"restartExited"`
-	DockerConfig           dc.Config           `json:"dockerConfig,omitempty"`
-	DockerHostConfig       dc.HostConfig       `json:"dockerHostConfig,omitempty"`
-	DockerNetworkingConfig dc.NetworkingConfig `json:"dockerNetworkingConfig,omitempty"`
+	Versions               []string            `yaml:"versions"`
+	UseAnyVersion          bool                `yaml:"useAnyVersion,omitempty"`
+	RestartExited          bool                `yaml:"restartExited"`
+	DockerConfig           dc.Config           `yaml:"dockerConfig,omitempty"`
+	DockerHostConfig       dc.HostConfig       `yaml:"dockerHostConfig,omitempty"`
+	DockerNetworkingConfig dc.NetworkingConfig `yaml:"dockerNetworkingConfig,omitempty"`
 }
 
 func (tc *TargetContainer) ContainerVersionScore(version string) uint {
@@ -31,5 +31,5 @@ func (tc *TargetContainer) ContainerVersionScore(version string) uint {
 }
 
 type ContainerWorkerConfig struct {
-	AllowSelfDelete bool `json:"allowSelfDelete"`
+	AllowSelfDelete bool `yaml:"allowSelfDelete"`
 }

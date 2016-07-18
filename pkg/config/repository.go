@@ -1,12 +1,12 @@
 package config
 
 type RemoteRepository struct {
-	Url         string              `json:"url"`
-	PullPrefix  string              `json:"pullPrefix"`
-	Username    string              `json:"username,omitempty"`
-	Password    string              `json:"password,omitempty"`
-	MetaHeaders map[string][]string `json:"metaHeaders,omitempty"`
-	Insecure    bool                `json:"insecure,omitempty"`
+	Url         string              `yaml:"url"`
+	PullPrefix  string              `yaml:"pullPrefix"`
+	Username    string              `yaml:"username,omitempty"`
+	Password    string              `yaml:"password,omitempty"`
+	MetaHeaders map[string][]string `yaml:"metaHeaders,omitempty"`
+	Insecure    bool                `yaml:"insecure,omitempty"`
 }
 
 func (r *RemoteRepository) RequiresAuth() bool {

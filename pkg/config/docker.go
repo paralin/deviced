@@ -9,9 +9,9 @@ import (
 )
 
 type DockerClientTlsConfig struct {
-	CaPemPath   string `json:"caPemPath,omitempty"`
-	CertPemPath string `json:"certPemPath,omitempty"`
-	KeyPemPath  string `json:"keyPemPath,omitempty"`
+	CaPemPath   string `yaml:"caPemPath,omitempty"`
+	CertPemPath string `yaml:"certPemPath,omitempty"`
+	KeyPemPath  string `yaml:"keyPemPath,omitempty"`
 }
 
 func (c *DockerClientTlsConfig) validate() bool {
@@ -32,10 +32,10 @@ func (c *DockerClientTlsConfig) validate() bool {
 }
 
 type DockerClientConfig struct {
-	LoadFromEnvironment bool                  `json:"loadFromEnvironment,omitempty"`
-	UseTls              bool                  `json:"useTls,omitempty"`
-	TlsConfig           DockerClientTlsConfig `json:"tlsConfig,omitempty"`
-	Endpoint            string                `json:"endpoint,omitempty"`
+	LoadFromEnvironment bool                  `yaml:"loadFromEnvironment,omitempty"`
+	UseTls              bool                  `yaml:"useTls,omitempty"`
+	TlsConfig           DockerClientTlsConfig `yaml:"tlsConfig,omitempty"`
+	Endpoint            string                `yaml:"endpoint,omitempty"`
 }
 
 func (c *DockerClientConfig) FillWithDefaults() {
