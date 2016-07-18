@@ -14,13 +14,13 @@ type DevicedConfigWatcher struct {
 func (cw *DevicedConfigWatcher) Init() int {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Errorf("Unable to initialize filesystem watcher, %s\n", err)
+		fmt.Printf("Unable to initialize filesystem watcher, %s\n", err)
 		return 1
 	}
 	cw.ConfigWatcher = watcher
 	err = watcher.Add(*cw.ConfigPath)
 	if err != nil {
-		fmt.Errorf("Unable to initialize filesystem watcher, %s\n", err)
+		fmt.Printf("Unable to initialize filesystem watcher, %s\n", err)
 		return 1
 	}
 	return 0

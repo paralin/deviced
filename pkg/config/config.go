@@ -10,12 +10,12 @@ import (
 )
 
 type DevicedConfig struct {
-	ContainerConfig ContainerWorkerConfig      "containerConfig"
-	ImageConfig     ImageWorkerConfig          "imageConfig"
-	DockerConfig    DockerClientConfig         "dockerConfig"
-	Repos           []*RemoteRepository        "repos"
-	Containers      []*TargetContainer         "containers"
-	Networks        []*dc.CreateNetworkOptions "networks"
+	ContainerConfig ContainerWorkerConfig      `json:"containerConfig"`
+	ImageConfig     ImageWorkerConfig          `json:"imageConfig"`
+	DockerConfig    DockerClientConfig         `json:"dockerConfig"`
+	Repos           []*RemoteRepository        `json:"repos"`
+	Containers      []*TargetContainer         `json:"containers"`
+	Networks        []*dc.CreateNetworkOptions `json:"networks"`
 }
 
 func configFileExists(path string) bool {
@@ -28,7 +28,7 @@ func (c *DevicedConfig) writeConfig(path string) bool {
 
 	d, err := yaml.Marshal(&c)
 	if err != nil {
-		fmt.Errorf("Error marshalling config: %v\n", err)
+		fmt.Printf("Error marshalling config: %v\n", err)
 		return false
 	}
 
@@ -64,7 +64,7 @@ func (c *DevicedConfig) CreateOrRead(confPath string) bool {
 		fmt.Printf("Writing default config to %s\n", confPath)
 		c.FillWithDefaults()
 		if !c.writeConfig(confPath) {
-			fmt.Errorf("Unable to write default config!\n")
+			fmt.Printf("Unable to write default config!\n")
 			return false
 		}
 		return true

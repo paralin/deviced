@@ -9,9 +9,9 @@ import (
 )
 
 type DockerClientTlsConfig struct {
-	CaPemPath   string "caPemPath,omitempty"
-	CertPemPath string "certPemPath,omitempty"
-	KeyPemPath  string "keyPemPath,omitempty"
+	CaPemPath   string `json:"caPemPath,omitempty"`
+	CertPemPath string `json:"certPemPath,omitempty"`
+	KeyPemPath  string `json:"keyPemPath,omitempty"`
 }
 
 func (c *DockerClientTlsConfig) validate() bool {
@@ -20,11 +20,11 @@ func (c *DockerClientTlsConfig) validate() bool {
 	for idx, path := range paths {
 		pathn := pathNames[idx]
 		if path == "" {
-			fmt.Errorf("No %s specified!\n", pathn)
+			fmt.Printf("No %s specified!\n", pathn)
 			return false
 		}
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			fmt.Errorf("%s at %s not found!\n", pathn, path)
+			fmt.Printf("%s at %s not found!\n", pathn, path)
 			return false
 		}
 	}
@@ -32,10 +32,10 @@ func (c *DockerClientTlsConfig) validate() bool {
 }
 
 type DockerClientConfig struct {
-	LoadFromEnvironment bool                  "loadFromEnvironment,omitempty"
-	UseTls              bool                  "useTls,omitempty"
-	TlsConfig           DockerClientTlsConfig "tlsConfig,omitempty"
-	Endpoint            string                "endpoint,omitempty"
+	LoadFromEnvironment bool                  `json:"loadFromEnvironment,omitempty"`
+	UseTls              bool                  `json:"useTls,omitempty"`
+	TlsConfig           DockerClientTlsConfig `json:"tlsConfig,omitempty"`
+	Endpoint            string                `json:"endpoint,omitempty"`
 }
 
 func (c *DockerClientConfig) FillWithDefaults() {

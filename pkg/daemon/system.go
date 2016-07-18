@@ -158,7 +158,7 @@ func (s *System) Main() int {
 			continue
 		}
 	}
-	fmt.Println("Exiting...\n")
+	fmt.Println("Exiting...")
 	s.closeWorkers()
 	s.closeWatchers()
 	return 0
