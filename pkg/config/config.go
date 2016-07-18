@@ -18,12 +18,12 @@ type DevicedConfig struct {
 	Networks        []*dc.CreateNetworkOptions `json:"networks"`
 }
 
-func configFileExists(path string) bool {
+func ConfigFileExists(path string) bool {
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
 }
 
-func (c *DevicedConfig) writeConfig(path string) bool {
+func (c *DevicedConfig) WriteConfig(path string) bool {
 	fmt.Printf("Writing config to %s\n", path)
 
 	d, err := yaml.Marshal(&c)
@@ -41,34 +41,34 @@ func (c *DevicedConfig) FillWithDefaults() {
 	c.ImageConfig.FillWithDefaults()
 }
 
-func (c *DevicedConfig) ReadFrom(confPath string) bool {
+func (c *DevicedConfig) ReadFrom(confPath string) error {
 	dat, err := ioutil.ReadFile(confPath)
 	if err != nil {
 		fmt.Printf("Unable to read config at %s, %v\n", confPath, err)
-		return false
+		return err
 	}
 
 	err = yaml.Unmarshal(dat, &c)
 	if err != nil {
 		fmt.Printf("Unable to parse config at %s, %v\n", confPath, err)
-		return false
+		return err
 	}
 
 	fmt.Printf("Read config from %s\n", confPath)
 	c.FillWithDefaults()
-	return true
+	return nil
 }
 
 func (c *DevicedConfig) CreateOrRead(confPath string) bool {
-	if !configFileExists(confPath) {
+	if !ConfigFileExists(confPath) {
 		fmt.Printf("Writing default config to %s\n", confPath)
 		c.FillWithDefaults()
-		if !c.writeConfig(confPath) {
+		if !c.WriteConfig(confPath) {
 			fmt.Printf("Unable to write default config!\n")
 			return false
 		}
 		return true
 	}
 
-	return c.ReadFrom(confPath)
+	return c.ReadFrom(confPath) == nil
 }
