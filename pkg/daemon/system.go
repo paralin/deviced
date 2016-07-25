@@ -148,9 +148,9 @@ func (s *System) Main() int {
 			s.closeWatchers()
 			time.Sleep(1 * time.Second)
 			s.ConfigLock.Lock()
-			didread := s.Config.ReadFrom(s.ConfigPath)
+			err := s.Config.ReadFrom(s.ConfigPath)
 			s.ConfigLock.Unlock()
-			if didread {
+			if err == nil {
 				s.triggerConfRecheck()
 				s.wakeWorkers()
 			}

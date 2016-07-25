@@ -149,7 +149,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 
 	containers, err := cw.DockerClient.ListContainers(listOpts)
 	if err != nil {
-		fmt.Errorf("Unable to list containers, error: %v\n", err)
+		fmt.Printf("Unable to list containers, error: %v\n", err)
 		if cw.sleepShouldQuit(time.Duration(2 * time.Second)) {
 			return
 		}

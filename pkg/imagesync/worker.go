@@ -15,6 +15,7 @@ import (
 	ddistro "github.com/synrobo/deviced/pkg/distribution"
 
 	dc "github.com/fsouza/go-dockerclient"
+	"github.com/synrobo/deviced/pkg/arch"
 	"github.com/synrobo/deviced/pkg/config"
 	"github.com/synrobo/deviced/pkg/registry"
 	"github.com/synrobo/deviced/pkg/utils"
@@ -138,12 +139,13 @@ func (iw *ImageSyncWorker) processOnce() {
 		if bestAvailableScore == 0 || (len(ctr.Versions) == 0 && !ctr.UseAnyVersion) {
 			continue
 		}
+		versionList := arch.AppendArchTagSuffix(ctr.Versions)
 		// fetch anything from index 0 to bestAvailableScore (non inclusive)
 		var tagsToFetch []string
 		if bestAvailable == "" {
-			tagsToFetch = ctr.Versions
+			tagsToFetch = versionList
 		} else {
-			tagsToFetch = ctr.Versions[:bestAvailableScore]
+			tagsToFetch = versionList[:bestAvailableScore]
 		}
 		fmt.Printf("We need to fetch images for %s\n", *image)
 		fmt.Printf("Best available: %s score: %d\n", bestAvailable, bestAvailableScore)

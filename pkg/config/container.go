@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	dc "github.com/fsouza/go-dockerclient"
+	"github.com/synrobo/deviced/pkg/arch"
 )
 
 type TargetContainer struct {
@@ -15,6 +16,7 @@ type TargetContainer struct {
 	// acceptable version tags, in order of priority
 	Versions               []string            `yaml:"versions"`
 	UseAnyVersion          bool                `yaml:"useAnyVersion,omitempty"`
+	NoArchTag              bool                `yaml:"noArchTag,omitempty"`
 	RestartExited          bool                `yaml:"restartExited"`
 	DockerConfig           dc.Config           `yaml:"dockerConfig,omitempty"`
 	DockerHostConfig       dc.HostConfig       `yaml:"dockerHostConfig,omitempty"`
@@ -22,7 +24,8 @@ type TargetContainer struct {
 }
 
 func (tc *TargetContainer) ContainerVersionScore(version string) uint {
-	for idx, ver := range tc.Versions {
+	vers := arch.AppendArchTagSuffix(tc.Versions)
+	for idx, ver := range vers {
 		if strings.EqualFold(ver, version) {
 			return uint(idx)
 		}
