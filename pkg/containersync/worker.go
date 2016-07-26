@@ -167,7 +167,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 
 	// Sync containers to running containers list.
 	devicedIdToContainer := make(map[string]state.RunningContainer)
-	containersToDelete := make(map[string]bool)
+	containersToDelete := make(map[string][]config.LifecycleHook)
 	containersToStart := make(map[string]bool)
 	containersToCreate := []dc.CreateContainerOptions{}
 	for _, ctr := range containers {
@@ -186,13 +186,13 @@ func (cw *ContainerSyncWorker) processOnce() {
 
 		if matchingTarget == nil {
 			fmt.Printf("Cannot find match for container %s (%s), scheduling delete.\n", ctr.Names[0], ctr.Image)
-			containersToDelete[ctr.ID] = true
+			containersToDelete[ctr.ID] = []config.LifecycleHook{}
 			continue
 		}
 
 		if ctr.State != "running" && !matchingTarget.RestartExited {
 			fmt.Printf("Container %s (%s) not running and RestartExited not set, killing.\n", ctr.Names[0], ctr.Image)
-			containersToDelete[ctr.ID] = true
+			containersToDelete[ctr.ID] = []config.LifecycleHook{}
 			continue
 		}
 
@@ -208,11 +208,11 @@ func (cw *ContainerSyncWorker) processOnce() {
 			if thisScore < otherScore {
 				fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", ctr.ID, imageTag, val.ApiContainer.ID, oimageTag)
 				devicedIdToContainer[matchingTarget.Id] = *runningContainer
-				containersToDelete[val.ApiContainer.ID] = true
+				containersToDelete[val.ApiContainer.ID] = matchingTarget.LifecycleHooks.OnStop
 				containersToStart[ctr.ID] = true
 			} else {
 				fmt.Printf("Choosing container %s (%s) over container %s (%s).\n", val.ApiContainer.ID, oimageTag, ctr.ID, imageTag)
-				containersToDelete[ctr.ID] = true
+				containersToDelete[ctr.ID] = matchingTarget.LifecycleHooks.OnStop
 				containersToStart[val.ApiContainer.ID] = true
 			}
 		} else {
@@ -266,7 +266,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 		}
 		if ok && selectedCtr != currentCtr {
 			fmt.Printf("Replacing container %s:%s with new container at %s:%s\n", currentCtr.Image, currentCtr.ImageTag, selectedCtr.Image, selectedCtr.ImageTag)
-			containersToDelete[currentCtr.ApiContainer.ID] = true
+			containersToDelete[currentCtr.ApiContainer.ID] = tctr.LifecycleHooks.OnStop
 		}
 		fmt.Printf("Starting container (%s) %s:%s...\n", tctr.Id, selectedCtr.Image, selectedCtr.ImageTag)
 		opts := dc.CreateContainerOptions{
@@ -285,7 +285,7 @@ func (cw *ContainerSyncWorker) processOnce() {
 	}
 
 	// We have picked the containers to keep. Delete the others.
-	for cid, _ := range containersToDelete {
+	for cid, hooks := range containersToDelete {
 		if cw.Reflection != nil && cw.Reflection.Container.ID == cid {
 			if !cw.Config.ContainerConfig.AllowSelfDelete {
 				fmt.Printf("Preventing deletion of ourselves...\n")
@@ -293,7 +293,52 @@ func (cw *ContainerSyncWorker) processOnce() {
 			}
 			fmt.Printf("Allowing self deletion...\n")
 		}
-		fmt.Printf("Stopping container %s, 30 second grace period...\n", cid)
+
+		// Run stop hooks
+		fmt.Printf("Stopping container %s (running stop hooks)...\n", cid)
+		for hidx, hook := range hooks {
+			fmt.Printf("Running stop hook %d...\n", hidx)
+			if hook.Exec != nil {
+				fmt.Printf("Running stop hook %d exec...\n", hidx)
+				exec, err := cw.DockerClient.CreateExec(dc.CreateExecOptions{
+					Cmd:       hook.Exec.Command,
+					Container: cid,
+				})
+				if err != nil {
+					fmt.Printf("Error creating exec for %s onexit hook: %v\n", cid, err)
+					continue
+				}
+				closew, err := cw.DockerClient.StartExecNonBlocking(exec.ID, dc.StartExecOptions{
+					Tty: true,
+				})
+				if err != nil {
+					fmt.Printf("Error starting exec for %s onexit hook: %v\n", cid, err)
+					continue
+				}
+				closeChannel := make(chan bool, 1)
+				go func() {
+					defer func() {
+						closeChannel <- true
+					}()
+					if err := closew.Wait(); err != nil {
+						fmt.Printf("Error waiting for finish exec for %s onexit hook: %v\n", cid, err)
+					}
+				}()
+
+				waitDur, err := time.ParseDuration(hook.Exec.Timeout)
+				if err != nil || hook.Exec.Timeout == "" {
+					fmt.Printf("Using default wait time of 30 seconds for hook...\n")
+					waitDur = time.Duration(30) * time.Second
+				}
+				select {
+				case <-closeChannel:
+				case <-time.After(waitDur):
+					fmt.Printf("Exec stop hook timed out, continuing.")
+				}
+			}
+		}
+
+		fmt.Printf("Stopping container %s...\n", cid)
 		if err := cw.DockerClient.StopContainer(cid, 30); err != nil {
 			fmt.Printf("Error stopping container %s, %v\n", cid, err)
 		}

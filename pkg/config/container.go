@@ -21,6 +21,20 @@ type TargetContainer struct {
 	DockerConfig           dc.Config           `yaml:"dockerConfig,omitempty"`
 	DockerHostConfig       dc.HostConfig       `yaml:"dockerHostConfig,omitempty"`
 	DockerNetworkingConfig dc.NetworkingConfig `yaml:"dockerNetworkingConfig,omitempty"`
+	LifecycleHooks         LifecycleHookSet    `yaml:"lifecycleHooks,omitempty"`
+}
+
+type LifecycleHookSet struct {
+	OnStop []LifecycleHook
+}
+
+type LifecycleHook struct {
+	Exec *LifecycleExecHook
+}
+
+type LifecycleExecHook struct {
+	Command []string
+	Timeout string
 }
 
 func (tc *TargetContainer) ContainerVersionScore(version string) uint {
