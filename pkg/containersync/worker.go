@@ -293,6 +293,10 @@ func (cw *ContainerSyncWorker) processOnce() {
 			}
 			fmt.Printf("Allowing self deletion...\n")
 		}
+		fmt.Printf("Stopping container %s, 30 second grace period...\n", cid)
+		if err := cw.DockerClient.StopContainer(cid, 30); err != nil {
+			fmt.Printf("Error stopping container %s, %v\n", cid, err)
+		}
 		opts := dc.RemoveContainerOptions{ID: cid, Force: true}
 		if err := cw.DockerClient.RemoveContainer(opts); err != nil {
 			fmt.Printf("Error attempting to remove container, %v\n", err)
