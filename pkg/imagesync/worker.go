@@ -90,8 +90,8 @@ type imageToFetch struct {
 }
 
 type availableDownloadRepository struct {
-	Repo    *distribution.Repository
-	RepoRef *config.RemoteRepository
+	Repo    distribution.Repository
+	RepoRef config.RemoteRepository
 }
 
 func (iw *ImageSyncWorker) processOnce() {
@@ -226,11 +226,11 @@ func (iw *ImageSyncWorker) processOnce() {
 				fmt.Printf("Error checking '%s' for %s, %v\n", rege.Url, image, err)
 				continue
 			}
-			fmt.Printf("From %s, %s is available with %d tags.\n", rege.Url, image, len(tags))
+			fmt.Printf("From %s, %s is available with %d tags, pull prefix %s.\n", rege.Url, image, len(tags), rege.PullPrefix)
 			for _, tag := range tags {
 				tf.AvailableAt[tag] = append(tf.AvailableAt[tag], availableDownloadRepository{
-					Repo:    &reg,
-					RepoRef: rege,
+					Repo:    reg,
+					RepoRef: *rege,
 				})
 			}
 		}
