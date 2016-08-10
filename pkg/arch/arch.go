@@ -13,13 +13,16 @@ import (
 func GetArchTagSuffix() string {
 	arch := runtime.GOARCH
 	switch arch {
-	case
-		"arm":
+	case "arm":
 		return "-arm"
 	case "arm64":
 		return "-arm"
 	}
 	return ""
+}
+
+func GetArch() string {
+	return runtime.GOARCH
 }
 
 func AppendArchTagSuffix(versions []string) []string {

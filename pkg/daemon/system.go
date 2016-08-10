@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dc "github.com/fsouza/go-dockerclient"
+	"github.com/synrobo/deviced/pkg/arch"
 	"github.com/synrobo/deviced/pkg/config"
 	"github.com/synrobo/deviced/pkg/containersync"
 	"github.com/synrobo/deviced/pkg/imagesync"
@@ -127,6 +128,13 @@ func (s *System) Main() int {
 
 	if res := s.initWatchers(); res != 0 {
 		return res
+	}
+
+	archTag := arch.GetArchTagSuffix()
+	if archTag != "" {
+		fmt.Printf("Using arch tag suffix: %s\n", archTag)
+	} else {
+		fmt.Printf("Using no arch tag suffix, arch is %s\n", arch.GetArch())
 	}
 
 	fmt.Printf("Starting image worker...\n")
