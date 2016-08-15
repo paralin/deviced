@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/synrobo/deviced/pkg/random"
+	"github.com/fuserobotics/deviced/pkg/random"
 )
 
 const shortLen = 12

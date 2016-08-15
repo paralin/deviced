@@ -12,13 +12,13 @@ import (
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/engine-api/types"
-	ddistro "github.com/synrobo/deviced/pkg/distribution"
+	ddistro "github.com/fuserobotics/deviced/pkg/distribution"
 
 	dc "github.com/fsouza/go-dockerclient"
-	"github.com/synrobo/deviced/pkg/arch"
-	"github.com/synrobo/deviced/pkg/config"
-	"github.com/synrobo/deviced/pkg/registry"
-	"github.com/synrobo/deviced/pkg/utils"
+	"github.com/fuserobotics/deviced/pkg/arch"
+	"github.com/fuserobotics/deviced/pkg/config"
+	"github.com/fuserobotics/deviced/pkg/registry"
+	"github.com/fuserobotics/deviced/pkg/utils"
 )
 
 type ImageSyncWorker struct {

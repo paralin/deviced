@@ -18,10 +18,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/synrobo/deviced/pkg/httputils"
-	"github.com/synrobo/deviced/pkg/ioutils"
-	"github.com/synrobo/deviced/pkg/stringid"
-	"github.com/synrobo/deviced/pkg/tarsum"
+	"github.com/fuserobotics/deviced/pkg/httputils"
+	"github.com/fuserobotics/deviced/pkg/ioutils"
+	"github.com/fuserobotics/deviced/pkg/stringid"
+	"github.com/fuserobotics/deviced/pkg/tarsum"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/reference"

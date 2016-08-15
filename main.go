@@ -14,7 +14,7 @@
 
 package main
 
-import "github.com/synrobo/deviced/cmd"
+import "github.com/fuserobotics/deviced/cmd"
 
 func main() {
 	cmd.Execute()

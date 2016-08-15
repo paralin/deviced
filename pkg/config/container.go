@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	dc "github.com/fsouza/go-dockerclient"
-	"github.com/synrobo/deviced/pkg/arch"
+	"github.com/fuserobotics/deviced/pkg/arch"
 )
 
 type TargetContainer struct {

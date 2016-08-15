@@ -9,11 +9,11 @@ import (
 	"time"
 
 	dc "github.com/fsouza/go-dockerclient"
-	"github.com/synrobo/deviced/pkg/arch"
-	"github.com/synrobo/deviced/pkg/config"
-	"github.com/synrobo/deviced/pkg/containersync"
-	"github.com/synrobo/deviced/pkg/imagesync"
-	"github.com/synrobo/deviced/pkg/reflection"
+	"github.com/fuserobotics/deviced/pkg/arch"
+	"github.com/fuserobotics/deviced/pkg/config"
+	"github.com/fuserobotics/deviced/pkg/containersync"
+	"github.com/fuserobotics/deviced/pkg/imagesync"
+	"github.com/fuserobotics/deviced/pkg/reflection"
 )
 
 type System struct {

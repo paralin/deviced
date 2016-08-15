@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/synrobo/deviced/pkg/daemon"
+	"github.com/fuserobotics/deviced/pkg/daemon"
 )
 
 var configPath string

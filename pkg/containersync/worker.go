@@ -9,10 +9,10 @@ import (
 	"time"
 
 	dc "github.com/fsouza/go-dockerclient"
-	"github.com/synrobo/deviced/pkg/config"
-	"github.com/synrobo/deviced/pkg/reflection"
-	"github.com/synrobo/deviced/pkg/state"
-	"github.com/synrobo/deviced/pkg/utils"
+	"github.com/fuserobotics/deviced/pkg/config"
+	"github.com/fuserobotics/deviced/pkg/reflection"
+	"github.com/fuserobotics/deviced/pkg/state"
+	"github.com/fuserobotics/deviced/pkg/utils"
 )
 
 const deviced_id_label string = "deviced.id"

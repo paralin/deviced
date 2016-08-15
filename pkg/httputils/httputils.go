@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/synrobo/deviced/pkg/jsonmessage"
+	"github.com/fuserobotics/deviced/pkg/jsonmessage"
 )
 
 var (
