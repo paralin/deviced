@@ -27,3 +27,4 @@ glide.lock
 vendor/
 deviced
 deviced.yaml
+dumb-init
