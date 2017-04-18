@@ -2,4 +2,4 @@ FROM container4armhf/armhf-alpine:edge
 RUN apk --update add ca-certificates
 ADD dumb-init /
 ADD deviced /
-ENTRYPOINT ["/dumb-init", "/deviced"]
+ENTRYPOINT ["/dumb-init"]
