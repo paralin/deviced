@@ -1,14 +1,14 @@
 package state
 
 import (
-	dc "github.com/fsouza/go-dockerclient"
+	dct "github.com/docker/docker/api/types"
 )
 
 type RunningContainer struct {
 	// The corresponding deviced ID
-	DevicedID    string            `yaml:"devicedId"`
-	Image        string            `yaml:"image"`
-	ImageTag     string            `yaml:"imageTag"`
-	Score        uint              "score,omitempty"
-	ApiContainer *dc.APIContainers `yaml:"apiContainer"`
+	DevicedID    string         `yaml:"devicedId"`
+	Image        string         `yaml:"image"`
+	ImageTag     string         `yaml:"imageTag"`
+	Score        uint           `yaml:"score,omitempty"`
+	ApiContainer *dct.Container `yaml:"apiContainer"`
 }

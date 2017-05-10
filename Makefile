@@ -16,7 +16,7 @@ push: docker
 	docker push registry.fusebot.io/fuserobotics/deviced:base
 
 buildarm:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -v -a -o deviced
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -v -a -o deviced
 
 clean:
 	-git clean -Xfd

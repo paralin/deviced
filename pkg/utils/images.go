@@ -3,13 +3,13 @@ package utils
 import (
 	"strings"
 
-	dc "github.com/fsouza/go-dockerclient"
+	dit "github.com/docker/docker/api/types"
 )
 
-func BuildImageMap(images *[]dc.APIImages) map[string][]string {
+func BuildImageMap(images []dit.ImageSummary) map[string][]string {
 	// Map of image name -> available tag list
 	availableTagMap := map[string][]string{}
-	for _, img := range *images {
+	for _, img := range images {
 		for _, tagfull := range img.RepoTags {
 			if strings.Contains(tagfull, "<none>") {
 				continue

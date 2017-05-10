@@ -5,17 +5,17 @@ import (
 	"io/ioutil"
 	"os"
 
-	dc "github.com/fsouza/go-dockerclient"
+	dcapi "github.com/docker/docker/api/types"
 	"github.com/go-yaml/yaml"
 )
 
 type DevicedConfig struct {
-	ContainerConfig ContainerWorkerConfig      `yaml:"containerConfig"`
-	ImageConfig     ImageWorkerConfig          `yaml:"imageConfig"`
-	DockerConfig    DockerClientConfig         `yaml:"dockerConfig"`
-	Repos           []*RemoteRepository        `yaml:"repos"`
-	Containers      []*TargetContainer         `yaml:"containers"`
-	Networks        []*dc.CreateNetworkOptions `yaml:"networks"`
+	ContainerConfig ContainerWorkerConfig         `yaml:"containerConfig"`
+	ImageConfig     ImageWorkerConfig             `yaml:"imageConfig"`
+	DockerConfig    DockerClientConfig            `yaml:"dockerConfig"`
+	Repos           []*RemoteRepository           `yaml:"repos"`
+	Containers      []*TargetContainer            `yaml:"containers"`
+	Networks        []*dcapi.NetworkCreateRequest `yaml:"networks"`
 }
 
 func ConfigFileExists(path string) bool {

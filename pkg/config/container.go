@@ -4,7 +4,8 @@ import (
 	"math"
 	"strings"
 
-	dc "github.com/fsouza/go-dockerclient"
+	dcapi "github.com/docker/docker/api/types/container"
+	dcnapi "github.com/docker/docker/api/types/network"
 	"github.com/fuserobotics/deviced/pkg/arch"
 )
 
@@ -14,14 +15,14 @@ type TargetContainer struct {
 	// [namespace/]name no version
 	Image string `yaml:"image"`
 	// acceptable version tags, in order of priority
-	Versions               []string            `yaml:"versions"`
-	UseAnyVersion          bool                `yaml:"useAnyVersion,omitempty"`
-	NoArchTag              bool                `yaml:"noArchTag,omitempty"`
-	RestartExited          bool                `yaml:"restartExited"`
-	DockerConfig           dc.Config           `yaml:"dockerConfig,omitempty"`
-	DockerHostConfig       dc.HostConfig       `yaml:"dockerHostConfig,omitempty"`
-	DockerNetworkingConfig dc.NetworkingConfig `yaml:"dockerNetworkingConfig,omitempty"`
-	LifecycleHooks         LifecycleHookSet    `yaml:"lifecycleHooks,omitempty"`
+	Versions               []string                `yaml:"versions"`
+	UseAnyVersion          bool                    `yaml:"useAnyVersion,omitempty"`
+	NoArchTag              bool                    `yaml:"noArchTag,omitempty"`
+	RestartExited          bool                    `yaml:"restartExited"`
+	DockerConfig           dcapi.Config            `yaml:"dockerConfig,omitempty"`
+	DockerHostConfig       dcapi.HostConfig        `yaml:"dockerHostConfig,omitempty"`
+	DockerNetworkingConfig dcnapi.NetworkingConfig `yaml:"dockerNetworkingConfig,omitempty"`
+	LifecycleHooks         LifecycleHookSet        `yaml:"lifecycleHooks,omitempty"`
 }
 
 type LifecycleHookSet struct {

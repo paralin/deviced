@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -8,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	dc "github.com/fsouza/go-dockerclient"
+	dc "github.com/docker/docker/client"
 	"github.com/fuserobotics/deviced/pkg/arch"
 	"github.com/fuserobotics/deviced/pkg/config"
 	"github.com/fuserobotics/deviced/pkg/containersync"
@@ -48,7 +49,7 @@ func (s *System) initWorkers() int {
 		return 1
 	}
 
-	err = s.DockerClient.Ping()
+	_, err = s.DockerClient.Ping(context.Background())
 	if err != nil {
 		fmt.Printf("Unable to ping Docker, %v\n", err)
 		return 1

@@ -1,5 +1,10 @@
 package config
 
+import (
+	"encoding/base64"
+	"fmt"
+)
+
 type RemoteRepository struct {
 	Url         string              `yaml:"url"`
 	PullPrefix  string              `yaml:"pullPrefix"`
@@ -16,4 +21,9 @@ func (r *RemoteRepository) RequiresAuth() bool {
 // Later validate that it's a OK URL
 func (r *RemoteRepository) Validate() bool {
 	return r.Url != ""
+}
+
+func (r *RemoteRepository) BuildBase64Creds() string {
+	credsStr := fmt.Sprintf("%s:%s", r.Username, r.Password)
+	return base64.StdEncoding.EncodeToString([]byte(credsStr))
 }

@@ -1,5 +1,9 @@
 package reflection
 
+import (
+	"context"
+)
+
 /*
 DeviceD Reflection
 ==================
@@ -11,12 +15,13 @@ This will only work if:
 */
 
 import (
-	dc "github.com/fsouza/go-dockerclient"
+	dct "github.com/docker/docker/api/types"
+	dc "github.com/docker/docker/client"
 	"os"
 )
 
 type DevicedReflection struct {
-	Container *dc.Container
+	Container *dct.ContainerJSON
 }
 
 func BuildReflection(client *dc.Client) (*DevicedReflection, error) {
@@ -27,10 +32,14 @@ func BuildReflection(client *dc.Client) (*DevicedReflection, error) {
 	return &DevicedReflection{Container: ctr}, nil
 }
 
-func InspectCurrentContainer(client *dc.Client) (*dc.Container, error) {
+func InspectCurrentContainer(client *dc.Client) (*dct.ContainerJSON, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
 	}
-	return client.InspectContainer(hostname)
+	img, err := client.ContainerInspect(context.Background(), hostname)
+	if err != nil {
+		return nil, err
+	}
+	return &img, err
 }

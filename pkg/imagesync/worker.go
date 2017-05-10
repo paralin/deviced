@@ -1,7 +1,9 @@
 package imagesync
 
 import (
+	"context"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net/url"
 	"strings"
@@ -9,12 +11,12 @@ import (
 	"time"
 
 	"github.com/docker/distribution"
-	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/engine-api/types"
 	ddistro "github.com/fuserobotics/deviced/pkg/distribution"
 
-	dc "github.com/fsouza/go-dockerclient"
+	dct "github.com/docker/docker/api/types"
+	dc "github.com/docker/docker/client"
 	"github.com/fuserobotics/deviced/pkg/arch"
 	"github.com/fuserobotics/deviced/pkg/config"
 	"github.com/fuserobotics/deviced/pkg/registry"
@@ -110,14 +112,14 @@ func (iw *ImageSyncWorker) processOnce() {
 	}
 
 	// Load the current image list
-	liOpts := dc.ListImagesOptions{}
-	images, err := iw.DockerClient.ListImages(liOpts)
+	liOpts := dct.ImageListOptions{}
+	images, err := iw.DockerClient.ImageList(context.Background(), liOpts)
 	if err != nil {
 		fmt.Printf("Error fetching images list %v\n", err)
 		return
 	}
 
-	imageMap := utils.BuildImageMap(&images)
+	imageMap := utils.BuildImageMap(images)
 
 	// For each target container grab the best tag available currently
 	// If the best tag is score 0 don't check it
@@ -245,29 +247,25 @@ func (iw *ImageSyncWorker) processOnce() {
 					if reg.RepoRef.PullPrefix != "" {
 						imageWithPrefix = strings.Join([]string{reg.RepoRef.PullPrefix, tf.Target.Image}, "/")
 					}
-					popts := dc.PullImageOptions{
-						Repository: imageWithPrefix,
-						Tag:        tag,
-						// OutputStream: os.Stdout,
-						Registry: reg.RepoRef.PullPrefix,
+					popts := dct.ImagePullOptions{
+						RegistryAuth: reg.RepoRef.BuildBase64Creds(),
 					}
-					authopts := dc.AuthConfiguration{
-						Username: reg.RepoRef.Username,
-						Password: reg.RepoRef.Password,
-					}
-					err := iw.DockerClient.PullImage(popts, authopts)
+					err := func() error {
+						rc, err := iw.DockerClient.ImagePull(context.Background(), fmt.Sprintf("%s:%s", imageWithPrefix, tag), popts)
+						if err != nil {
+							return err
+						}
+						_, err = ioutil.ReadAll(rc)
+						return err
+					}()
 					if err != nil {
 						fmt.Printf("Failed to pull %s:%s from %s, %v\n", tf.Target.Image, tag, reg.RepoRef.Url, err)
 						continue
 					}
 					if reg.RepoRef.PullPrefix != "" {
-						tagopts := dc.TagImageOptions{
-							Repo:  tf.Target.Image,
-							Tag:   tag,
-							Force: true,
-						}
 						imageWithPrefixAndTag := strings.Join([]string{imageWithPrefix, tag}, ":")
-						err = iw.DockerClient.TagImage(imageWithPrefixAndTag, tagopts)
+						targetImageWithTag := strings.Join([]string{tf.Target.Image, tag}, ":")
+						err = iw.DockerClient.ImageTag(context.Background(), imageWithPrefixAndTag, targetImageWithTag)
 						if err != nil {
 							fmt.Printf("Failed to tag %s as %s:%s, %v\n", imageWithPrefixAndTag, tf.Target.Image, tag, err)
 							continue

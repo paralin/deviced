@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"github.com/fuserobotics/deviced/pkg/daemon"
+	"github.com/spf13/cobra"
 )
 
 var configPath string
@@ -47,7 +47,7 @@ func initConfig() {
 	if configPath != "" {
 		configPathAbs, err := filepath.Abs(configPath)
 		if err != nil {
-			fmt.Errorf("Unable to format %s to absolute path, %s, using default path.\n", configPath, err)
+			fmt.Printf("Unable to format %s to absolute path, %s, using default path.\n", configPath, err)
 			configPath = ""
 		} else {
 			configPath = configPathAbs
