@@ -84,9 +84,9 @@ func (c *Config) ToAPI() *container.Config {
 // Resources contains container's resources (cgroups config, ulimits...)
 type Resources struct {
 	// Applicable to all platforms
-	CPUShares int64 `json:"CpuShares" yaml:"cpuShares"` // CPU shares (relative weight vs. other containers)
-	Memory    int64 `yaml:"memory,omitempty"`           // Memory limit (in bytes)
-	NanoCPUs  int64 `json:"NanoCpus" yaml:"nanoCpus"`   // CPU quota in units of 10<sup>-9</sup> CPUs.
+	CPUShares int64 `json:"CpuShares" yaml:"cpuShares,omitempty"` // CPU shares (relative weight vs. other containers)
+	Memory    int64 `yaml:"memory,omitempty"`                     // Memory limit (in bytes)
+	NanoCPUs  int64 `json:"NanoCpus" yaml:"nanoCpus,omitempty"`   // CPU quota in units of 10<sup>-9</sup> CPUs.
 
 	// Applicable to UNIX platforms
 	CgroupParent         string                     `yaml:"cgroupParent,omitempty"`  // Parent cgroup.
@@ -160,7 +160,7 @@ type HostConfig struct {
 	Runtime         string            `json:",omitempty" yaml:"runtime,omitempty"`    // Runtime to use with this container
 
 	// Contains container's resources (cgroups, ulimits)
-	Resources
+	Resources `yaml:"resources,omitempty"`
 
 	// Mounts specs used by the container
 	Mounts []mount.Mount `json:",omitempty" yaml:"mounts,omitempty"`
