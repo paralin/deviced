@@ -73,12 +73,12 @@ func (c *DockerClientConfig) FillWithDefaults() {
 }
 
 func (c *DockerClientConfig) BuildClient() (*dockerclient.Client, error) {
-	if c.Endpoint == "" {
-		return nil, errors.New("No endpoint specified!")
-	}
-
 	if c.LoadFromEnvironment {
 		return dockerclient.NewEnvClient()
+	}
+
+	if c.Endpoint == "" {
+		return nil, errors.New("No endpoint specified!")
 	}
 
 	tr := &http.Transport{}
