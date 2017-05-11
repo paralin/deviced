@@ -295,9 +295,9 @@ func (cw *ContainerSyncWorker) processOnce() {
 		fmt.Printf("Starting container (%s) %s:%s...\n", tctr.Id, selectedCtr.Image, selectedCtr.ImageTag)
 		opts := dct.ContainerCreateConfig{
 			Name:             strings.Join([]string{"devd", tctr.Id, strconv.Itoa(rand.Int() % 100)}, "_"),
-			Config:           &tctr.DockerConfig,
-			HostConfig:       &tctr.DockerHostConfig,
-			NetworkingConfig: &tctr.DockerNetworkingConfig,
+			Config:           (&tctr.DockerConfig).ToAPI(),
+			HostConfig:       (&tctr.DockerHostConfig).ToAPI(),
+			NetworkingConfig: (&tctr.DockerNetworkingConfig).ToAPI(),
 		}
 		if opts.Config.Labels == nil {
 			opts.Config.Labels = make(map[string]string)

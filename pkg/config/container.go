@@ -4,9 +4,8 @@ import (
 	"math"
 	"strings"
 
-	dcapi "github.com/docker/docker/api/types/container"
-	dcnapi "github.com/docker/docker/api/types/network"
 	"github.com/fuserobotics/deviced/pkg/arch"
+	dcapi "github.com/fuserobotics/deviced/pkg/types"
 )
 
 type TargetContainer struct {
@@ -15,14 +14,14 @@ type TargetContainer struct {
 	// [namespace/]name no version
 	Image string `yaml:"image"`
 	// acceptable version tags, in order of priority
-	Versions               []string                `yaml:"versions"`
-	UseAnyVersion          bool                    `yaml:"useAnyVersion,omitempty"`
-	NoArchTag              bool                    `yaml:"noArchTag,omitempty"`
-	RestartExited          bool                    `yaml:"restartExited"`
-	DockerConfig           dcapi.Config            `yaml:"dockerConfig,omitempty"`
-	DockerHostConfig       dcapi.HostConfig        `yaml:"dockerHostConfig,omitempty"`
-	DockerNetworkingConfig dcnapi.NetworkingConfig `yaml:"dockerNetworkingConfig,omitempty"`
-	LifecycleHooks         LifecycleHookSet        `yaml:"lifecycleHooks,omitempty"`
+	Versions               []string               `yaml:"versions"`
+	UseAnyVersion          bool                   `yaml:"useAnyVersion,omitempty"`
+	NoArchTag              bool                   `yaml:"noArchTag,omitempty"`
+	RestartExited          bool                   `yaml:"restartExited"`
+	DockerConfig           dcapi.Config           `yaml:"dockerConfig,omitempty"`
+	DockerHostConfig       dcapi.HostConfig       `yaml:"dockerHostConfig,omitempty"`
+	DockerNetworkingConfig dcapi.NetworkingConfig `yaml:"dockerNetworkingConfig,omitempty"`
+	LifecycleHooks         LifecycleHookSet       `yaml:"lifecycleHooks,omitempty"`
 }
 
 type LifecycleHookSet struct {
