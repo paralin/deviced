@@ -8,6 +8,8 @@
 package types
 
 import (
+	"encoding/json"
+
 	"github.com/docker/docker/api/types/blkiodev"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
@@ -15,7 +17,6 @@ import (
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
-	"github.com/imdario/mergo"
 )
 
 // PidMode represents the pid namespace of the container.
@@ -74,8 +75,13 @@ type Config struct {
 }
 
 func (c *Config) ToAPI() *container.Config {
+	dat, err := json.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
 	res := &container.Config{}
-	if err := mergo.Map(res, c); err != nil {
+	err = json.Unmarshal(dat, res)
+	if err != nil {
 		panic(err)
 	}
 	return res
@@ -170,8 +176,13 @@ type HostConfig struct {
 }
 
 func (c *HostConfig) ToAPI() *container.HostConfig {
+	dat, err := json.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
 	res := &container.HostConfig{}
-	if err := mergo.Map(res, c); err != nil {
+	err = json.Unmarshal(dat, res)
+	if err != nil {
 		panic(err)
 	}
 	return res
@@ -214,8 +225,13 @@ type NetworkingConfig struct {
 }
 
 func (c *NetworkingConfig) ToAPI() *network.NetworkingConfig {
+	dat, err := json.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
 	res := &network.NetworkingConfig{}
-	if err := mergo.Map(res, c); err != nil {
+	err = json.Unmarshal(dat, res)
+	if err != nil {
 		panic(err)
 	}
 	return res

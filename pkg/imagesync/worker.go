@@ -255,7 +255,11 @@ func (iw *ImageSyncWorker) processOnce() {
 						if err != nil {
 							return err
 						}
+						defer rc.Close()
 						_, err = ioutil.ReadAll(rc)
+						if err != nil {
+							return err
+						}
 						return err
 					}()
 					if err != nil {
