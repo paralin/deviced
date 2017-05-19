@@ -2,7 +2,8 @@ package config
 
 import (
 	"encoding/base64"
-	"fmt"
+	"encoding/json"
+	"github.com/docker/engine-api/types"
 )
 
 type RemoteRepository struct {
@@ -24,6 +25,10 @@ func (r *RemoteRepository) Validate() bool {
 }
 
 func (r *RemoteRepository) BuildBase64Creds() string {
-	credsStr := fmt.Sprintf("%s:%s", r.Username, r.Password)
-	return base64.StdEncoding.EncodeToString([]byte(credsStr))
+	auth := types.AuthConfig{
+		Username: r.Username,
+		Password: r.Password,
+	}
+	authBytes, _ := json.Marshal(auth)
+	return base64.StdEncoding.EncodeToString(authBytes)
 }
